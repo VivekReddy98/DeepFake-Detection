@@ -12,6 +12,13 @@ import tensorflow as tf
 import time
 
 
+'''
+Useful Links:
+https://github.com/tomrunia/TF_VideoInputPipeline/blob/master/kinetics/input_pipeline.py
+https://medium.com/mostly-ai/tensorflow-records-what-they-are-and-how-to-use-them-c46bc4bbb564
+
+'''
+
 class Video2TFRecord:
     def __init__(self, source_path, destination_path, n_frames_per_training_sample=80,
                 file_suffix = "*.mp4", width=299, height=299):
@@ -49,7 +56,10 @@ class Video2TFRecord:
 
             data = data[-1]
 
-            print(data.shape)
+            n_frames = data[0]
+
+            # n_records_by_video = int(n_frames/)
+
             break;
 
             # if n_videos_in_record > len(filenames):
