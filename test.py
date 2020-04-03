@@ -12,6 +12,10 @@
 # model.summary()
 
 from src.video2tfrecordCustom import Video2TFRecord
+import json
 
-V2TF = Video2TFRecord("data/train", "data/train")
+with open('data/metadata.json') as f:
+    data = json.load(f)
+
+V2TF = Video2TFRecord("data/train", "data/", data)
 V2TF.convert_videos_to_tfrecordv2()
