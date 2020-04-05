@@ -1,4 +1,4 @@
-import tensorflow
+import tensorflow as tf
 from tensorflow.keras import backend as K
 from tensorflow.keras import Sequential, Input
 from tensorflow.keras.layers import TimeDistributed, Dense, LSTM, Dropout
@@ -12,13 +12,15 @@ class DeepFakeDetector:
         Very Important: While Evaluating or Predicting use the batch size as specified in the Training Phase
         '''
         self.FRAMES = frames
-        pass
+        self.model = Sequential()
 
     def compile(self):
-        pass
+        opt = tf.keras.optimizers.Adam(lr=1e-05)
+        self.model.compile(optimizer=opt, loss='sparse_categorical_crossentropy')
 
-    def train(self):
-        pass
+    def train(self, train_data_generator, val_data_generator = None):
+        self.model.fit_generator(generator = train_data_generator, verbose=1,
+                                 use_multiprocessing=True, validation_data=val_data_generator)
 
     def predict(self):
         pass
@@ -58,24 +60,23 @@ class DeepFakeDetector:
 
         '''
 
-        CNN = tensorflow.keras.models.load_model(inception_path)
+        CNN = tf.keras.models.load_model(inception_path)
 
         '''
         Distribute a batch of frames in time and process them sequentially in LSTM Layer followed by Dense Layers.
         '''
         # input_model = Input(shape=(self.FRAMES, 299, 299, 3), name='video_input')
-        model = Sequential()
-        model.add(TimeDistributed(CNN, input_shape=(self.FRAMES, 299, 299, 3)))
-        model.add(LSTM(units=2048, dropout=0.5))
-        model.add(Dense(units=512, activation='relu'))
-        model.add(Dropout(rate=0.5))
-        model.add(Dense(1, activation='sigmoid'))
+        self.model.add(TimeDistributed(CNN, input_shape=(self.FRAMES, 299, 299, 3)))
+        self.model.add(LSTM(units=2048, dropout=0.5))
+        self.model.add(Dense(units=512, activation='relu'))
+        self.model.add(Dropout(rate=0.5))
+        self.model.add(Dense(1, activation='sigmoid'))
 
         if verbose:
             # CNN.summary()
-            model.summary()
+            self.model.summary()
 
-        return model
+        return None
 
 
 
