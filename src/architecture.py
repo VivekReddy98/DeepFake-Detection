@@ -16,7 +16,7 @@ class DeepFakeDetector:
 
     def compile(self):
         opt = tf.keras.optimizers.Adam(lr=1e-05)
-        self.model.compile(optimizer=opt, loss='sparse_categorical_crossentropy')
+        self.model.compile(optimizer=opt, loss='categorical_crossentropy')
 
     def train(self, train_data_generator, val_data_generator = None):
         self.model.fit_generator(generator = train_data_generator, verbose=1,
@@ -67,10 +67,10 @@ class DeepFakeDetector:
         '''
         # input_model = Input(shape=(self.FRAMES, 299, 299, 3), name='video_input')
         self.model.add(TimeDistributed(CNN, input_shape=(self.FRAMES, 299, 299, 3)))
-        self.model.add(LSTM(units=2048, dropout=0.5))
-        self.model.add(Dense(units=512, activation='relu'))
+        self.model.add(LSTM(units=512, dropout=0.5))
+        self.model.add(Dense(units=256, activation='relu'))
         self.model.add(Dropout(rate=0.5))
-        self.model.add(Dense(1, activation='sigmoid'))
+        self.model.add(Dense(2, activation='softmax'))
 
         if verbose:
             # CNN.summary()

@@ -77,27 +77,28 @@ class DataGenerator(keras.utils.Sequence):
         for ind in range(ind_min, ind_max):
             cap = cv2.VideoCapture(os.path.join(self.sourcePath, self.train[ind]))
 
-            print(batchPtr)
+            # print(batchPtr, os.path.join(self.sourcePath, self.train[ind]))
 
             framePtr = 0
             setCount = 0
             while (1):
                 ret, image = cap.read()
+                # print(type(image), framePtr, batchPtr, setCount)
                 image = image.astype("float32")
                 image -= image.mean()
                 image /= image.std()
 
                 if (framePtr < self.numFrames and batchPtr < self.batchSize):
                     outArr[batchPtr, framePtr, :, :, :] = cv2.resize(image, (self.dim[0], self.dim[1]), interpolation = cv2.INTER_AREA)
-
                 else:
                     raise Exception("batchPtr and framePtr are out of range, Error in calculating indexes")
+
                 framePtr += 1
                 if (framePtr >= self.numFrames):
                     if (self.labels[self.train[ind]]["label"] == "FAKE"):
-                        ylabels.append(1)
+                        ylabels.append([1,0])
                     else:
-                        ylabels.append(0)
+                        ylabels.append([0,1])
                     framePtr = 0
                     batchPtr += 1
                     setCount += 1
@@ -107,10 +108,12 @@ class DataGenerator(keras.utils.Sequence):
 
             cap.release()
 
-        print(len(ylabels), (ind_max-ind_min)*self.numSetsPerVideo)
-        assert (len(ylabels) == (ind_max-ind_min)*self.numSetsPerVideo)
+        ylabels_np  = np.asarray(ylabels, dtype=np.float32)
+        # print(ylabels., (ind_max-ind_min)*self.numSetsPerVideo)
+        assert (ylabels_np.shape[0] == (ind_max-ind_min)*self.numSetsPerVideo)
 
-        return (outArr, ylabels)
+        print("Batch Extraction with index " + str(index) + " completed \n")
+        return (outArr, ylabels_np)
 
     def on_epoch_end(self):
         random.shufle(self.train)
