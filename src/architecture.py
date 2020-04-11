@@ -4,6 +4,25 @@ from tensorflow.keras import Sequential, Input
 from tensorflow.keras.layers import TimeDistributed, Dense, LSTM, Dropout
 from tensorflow.keras.applications import InceptionV3
 
+
+def recall_m(y_true, y_pred):
+    true_positives = K.sum(K.round(K.clip(y_true * y_pred, 0, 1)))
+    possible_positives = K.sum(K.round(K.clip(y_true, 0, 1)))
+    recall = true_positives / (possible_positives + K.epsilon())
+    return recall
+
+def precision_m(y_true, y_pred):
+    true_positives = K.sum(K.round(K.clip(y_true * y_pred, 0, 1)))
+    predicted_positives = K.sum(K.round(K.clip(y_pred, 0, 1)))
+    precision = true_positives / (predicted_positives + K.epsilon())
+    return precision
+
+def f1_m(y_true, y_pred):
+    precision = precision_m(y_true, y_pred)
+    recall = recall_m(y_true, y_pred)
+    return 2*((precision*recall)/(precision+recall+K.epsilon()))
+
+
 class DeepFakeDetector:
     def __init__(self, frames):
         '''
@@ -14,13 +33,21 @@ class DeepFakeDetector:
         self.FRAMES = frames
         self.model = Sequential()
 
-    def compile(self):
-        opt = tf.keras.optimizers.Adam(lr=1e-05)
-        self.model.compile(optimizer=opt, loss='categorical_crossentropy')
+    def compile(self, loss='categorical_crossentropy', optimizer=None, metrics=[]):
+        if optimizer==None:
+            opt = tf.keras.optimizers.Adam(lr=1e-05)
+        else:
+            opt = optimizer
 
-    def train(self, train_data_generator, val_data_generator = None):
-        self.model.fit_generator(generator = train_data_generator, verbose=1,
-                                 use_multiprocessing=True, validation_data=val_data_generator)
+        if len(metrics) == 0:
+            met = ['acc',f1_m, precision_m, recall_m]
+        else:
+            met = metrics
+        self.model.compile(optimizer=opt, loss='categorical_crossentropy', metrics = met )
+
+    def train(self, train_data_generator, steps_per_epoch, val_data_generator = None, callbacks = [], use_multiprocessing=False):
+        self.model.fit_generator(generator = train_data_generator, steps_per_epoch=steps_per_epoch, verbose=1, callbacks = callbacks,
+                                 use_multiprocessing=use_multiprocessing, validation_data=val_data_generator)
 
     def predict(self):
         pass
@@ -77,7 +104,6 @@ class DeepFakeDetector:
             self.model.summary()
 
         return None
-
 
 
 if __name__ == "__main__":
