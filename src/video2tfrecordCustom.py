@@ -5,16 +5,41 @@ from tensorflow.python.platform import flags
 from tensorflow.python.platform import app
 import cv2 as cv2
 import numpy as np
-import math
-import os
+import math, os, json, time
 import tensorflow as tf
-import time
+import multiprocessing
 
 '''
 Useful Links:
 https://github.com/tomrunia/TF_VideoInputPipeline/blob/master/kinetics/input_pipeline.py
 https://medium.com/mostly-ai/tensorflow-records-what-they-are-and-how-to-use-them-c46bc4bbb564
+http://warmspringwinds.github.io/tensorflow/tf-slim/2016/12/21/tfrecords-guide/
 '''
+
+NUMFRAMES = 80
+
+def decode_tfrecord(serialized_example):
+
+    parsed_data = tf.parse_single_example(serialized_example, features={
+                                                  'vector_size': tf.FixedLenFeature([], tf.int64),
+                                                  'batch_size' : tf.FixedLenFeature([], tf.int64),
+                                                  'image_raw': tf.FixedLenFeature([], tf.string),
+                                                  'labels_raw': tf.FixedLenFeature([], tf.string),
+                                              })
+
+    image = tf.decode_raw(parsed_data['image_raw'], tf.float32)
+    annotation = tf.decode_raw(parsed_data['labels_raw'], tf.int8)
+
+    vector_dimensions = tf.cast(parsed_data['vector_size'], tf.int32)
+    batch_dim = tf.cast(parsed_data['batch_size'], tf.int32)
+
+    image = tf.reshape(image, [batch_dim/NUMFRAMES, NUMFRAMES, vector_dimensions])
+    annotation = tf.reshape(annotation, (1,2))
+
+    annotation = tf.ones([batch_dim/NUMFRAMES, 1], tf.int8) * annotation
+
+    return image, annotation
+
 
 def bytes_feature(value):
   return tf.train.Feature(bytes_list=tf.train.BytesList(value=[value]))
@@ -39,96 +64,176 @@ def _float32_feature(value):
   return tf.train.Feature(float_list=tf.train.FloatList(value=[value]))
 
 class Video2TFRecord:
-    def __init__(self, source_path, destination_path, label_dict, n_frames_per_training_sample=80,
+    def __init__(self, source_path, destination_path, label_dict, inception_path, n_frames_per_training_sample=240,
                 file_suffix = "*.mp4", width=299, height=299):
         """
         source_path: directory where video videos are stored
         destination_path: directory where tfrecords should be stored
-        n_frames_per_training_sample: HyperParameter one of [20, 40, 80]
         file_suffix: defines the video file type, e.g. *.mp4
         width: the width of the videos in pixels (299 Default for InceptionV3)
         height: the height of the videos in pixels (299 Default for InceptionV3)
         """
-        assert n_frames_per_training_sample in [20, 40, 80]
-
-        self.source_path = source_path
-        self.destination_path = destination_path
-        self.n_frames_per_training_sample = n_frames_per_training_sample
-        self.width = width
-        self.height = height
-        self.file_suffix = file_suffix
+        self.MP = TFRecordGenerator(source_path, destination_path, inception_path, n_frames_per_training_sample,
+                                    file_suffix, width, height)
         self.df = label_dict #pd.read_json(json_path).transpose()
 
-    def convert_videos_to_tfrecordv2(self):
-        filenames = gfile.Glob(os.path.join(self.source_path, self.file_suffix))
-        print('Total videos found: ' + str(len(filenames)))
-        # print(filenames)
-        self.__save_data_to_tfrecords(filenames)
-
-
-    def __save_data_to_tfrecords(self, filenames):
-
-        jobPool = []
-
-        for i, file in enumerate(filenames):
-
-            name = file.split("/")[-1]
-
-            if self.df[name]["label"] == "FAKE":
-                y_label = 1;
-            else:
-                y_label = 0;
-
-            p = Process(target=save_video_as_tf_records, args=(file, self.destination_path, self.width, self.height,
-                                                               self.n_frames_per_training_sample, y_label))
-            p.start()
-            jobPool.append(p)
-
+    def convert_videos_to_tfrecordv2(self, filenames, split='train'):
+        assert split in ['train', 'val', 'test']
+        print('Total videos found: ' + str(len(filenames)) + " Split: " + split)
+        args_process = []
+        for file in filenames:
+            args_process.append((file,self.df[file]["label"],split))
             break
+        num_cores = multiprocessing.cpu_count()
+        p = multiprocessing.Pool(num_cores)
+        p.starmap(self.MP.save_video_as_tf_records_ylabels, args_process)
+        return 1;
 
-        for process in jobPool:
-            process.join()
+
+class TFRecordGenerator:
+    def __init__(self, source_path, destination_path, inception_path, n_frames_per_training_sample,
+                file_suffix, width, height):
+        self.inception_path = inception_path
+        self.N_FRMS_PER_SAMPLE = n_frames_per_training_sample
+        self.WIDTH = width
+        self.HEIGHT = height
+        self.SRC_PATH = source_path
+        self.OUT_PATH = destination_path
+        self.FILE_SUFF = file_suffix
+
+    def save_video_as_tf_records_ylabels(self, file, label, split):
+
+        self.CNN_VECTORIZER = tf.keras.models.load_model(self.inception_path)
+        start_time = time.time()
+        file_path = os.path.join(self.SRC_PATH, file)
+        cap = cv2.VideoCapture(file_path)
+
+        frameCount = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        frameWidth = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        frameHeight = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+        buf = np.empty((self.N_FRMS_PER_SAMPLE, self.WIDTH, self.HEIGHT, 3), np.dtype('float32'))
+
+        fc = 0
+        while (fc < self.N_FRMS_PER_SAMPLE):
+            ret, frame = cap.read()
+            frame= cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            frame = central_crop(frame, 0.875)
+            frame = cv2.resize(frame, (299, 299), interpolation = cv2.INTER_AREA)
+            buf[fc] = tf.keras.applications.inception_v3.preprocess_input(frame)
+            fc += 1
+
+        buf.astype("float32")
+        start_cnn = time.time()
+        predictions = self.CNN_VECTORIZER.predict(buf)
+        predictions = predictions.astype('float32')
+
+        print(np.sum(predictions), np.sum(predictions, axis=1))
 
 
-def save_video_as_tf_records(file, out_path, width, height, n_frames_per_training_sample, label):
-    cap = cv2.VideoCapture(file)
-    frameCount = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    frameWidth = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    frameHeight = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-    image = np.empty((frameHeight, frameWidth, 3), np.dtype('float32'))
+        print("--- Model Inference Took: %s seconds ---" % (time.time() - start_cnn))
 
-    buf = np.empty((frameCount, width, height, 3), np.dtype('float32'))
+        tfrecords_filename = os.path.join(self.OUT_PATH, file.split('.')[0] + "_" + split + '.tfrecords')
 
-    fc = 0
-    ret = True
+        print(tfrecords_filename)
 
-    while (fc < frameCount  and ret):
-        ret, image = cap.read()
-        image = image.astype("float32")
-        image -= image.mean()
-        image /= image.std()
-        buf[fc] = cv2.resize(image, (width, height), interpolation = cv2.INTER_AREA)
-        fc += 1
+        # Gzip Compression
+        options = tf.python_io.TFRecordOptions(tf.python_io.TFRecordCompressionType.GZIP)
+        writer = tf.python_io.TFRecordWriter(tfrecords_filename, options=options)
 
-    buf.astype("float32")
-    itr = give_indices(frameCount, n_frames_per_training_sample)
-    record_count = 0
-    writer = None
-    feature = {}
+        if label == "FAKE":
+            y_label = np.array([1, 0], dtype=np.int64)
+        else:
+            y_label = np.array([0, 1], dtype=np.int64)
 
-    tup = next(itr)
 
-    while(itr != None):
-        filename = file.split("/")[-1].split(".")[0]+"_"+str(record_count)+"_"+tup[2]+".tfrecords"
-        print('Writing', filename)
-        feature["image"] = bytes_feature(tf.compat.as_bytes(buf[tup[0]:tup[1],:,:,:].tobytes()))
-        feature["label"] = int64_feature(label)
-        example = tf.train.Example(features=tf.train.Features(feature=feature))
-        writer = tf.python_io.TFRecordWriter(out_path+filename)
+        img_raw = predictions.tostring()
+        labels_raw = y_label.tostring()
+
+        example = tf.train.Example(features=tf.train.Features(feature={ 'vector_size': int64_feature(predictions.shape[1]),
+                                                                        'batch_size': int64_feature(predictions.shape[0]),
+                                                                        'image_raw': bytes_feature(img_raw),
+                                                                        'labels_raw': bytes_feature(labels_raw)}))
+
         writer.write(example.SerializeToString())
-        writer.close()
-        tup = next(itr)
-        record_count += 1
 
-    return 1
+        writer.close()
+        print("--- Extraction took: %s seconds ---" % (time.time() - start_time))
+
+        return 1
+
+
+# https://github.com/kentsommer/keras-inception-resnetV2/blob/14994dfca36ca09725998a1abf81ea2027dbcb76/evaluate_image.py#L16
+def central_crop(image, central_fraction):
+    """Crop the central region of the image.
+    Remove the outer parts of an image but retain the central region of the image
+    along each dimension. If we specify central_fraction = 0.5, this function
+    returns the region marked with "X" in the below diagram.
+     --------
+    |        |
+    |  XXXX  |
+    |  XXXX  |
+    |        | where "X" is the central 50% of the image.
+     --------
+    Args:
+    image: 3-D array of shape [height, width, depth]
+    central_fraction: float (0, 1], fraction of size to crop
+    Raises:
+    ValueError: if central_crop_fraction is not within (0, 1].
+    Returns:
+    3-D array
+    """
+    if central_fraction <= 0.0 or central_fraction > 1.0:
+        raise ValueError('central_fraction must be within (0, 1]')
+    if central_fraction == 1.0:
+        return image
+
+    img_shape = image.shape
+    depth = img_shape[2]
+    fraction_offset = int(1 / ((1 - central_fraction) / 2.0))
+    bbox_h_start = np.divide(img_shape[0], fraction_offset)
+    bbox_w_start = np.divide(img_shape[1], fraction_offset)
+
+    bbox_h_size = img_shape[0] - bbox_h_start * 2
+    bbox_w_size = img_shape[1] - bbox_w_start * 2
+
+    image = image[int(bbox_h_start):int(bbox_h_start+bbox_h_size), int(bbox_w_start):int(bbox_w_start+bbox_w_size), :]
+    return image
+
+if __name__ == "__main__":
+
+    # with open('../data/metadata.json') as f:
+    #     data = json.load(f)
+    #
+    # V2TF = Video2TFRecord("../data/train", "../data/train", data, "../weights/InceptionV3_Non_Trainable.h5")
+    #
+    # filenames = gfile.Glob(os.path.join("../data/train", "*.mp4"))
+    #
+    # filenames =  [name.split(os.path.sep)[-1] for name in filenames]
+    #
+    # V2TF.convert_videos_to_tfrecordv2(filenames)
+
+    sess = tf.Session()
+    #
+    # init_op = tf.group(
+    #     tf.global_variables_initializer(),
+    #     tf.local_variables_initializer())
+    #
+    # sess.run(init_op)
+
+    tfrecord_files = gfile.Glob(os.path.join("../data/", "*.tfrecords"))
+    # sess = tf.Session()
+    dataset = tf.data.TFRecordDataset(tfrecord_files, compression_type="GZIP")
+
+    print(dataset)
+
+    dataset = dataset.map(decode_tfrecord)
+    iterator = dataset.make_one_shot_iterator()
+    next_batch = iterator.get_next()
+
+    batch_videos, batch_labels = sess.run(next_batch)
+
+    print(np.sum(batch_videos),  np.sum(batch_videos, axis=2))
+
+    print(batch_videos.shape, batch_labels.shape)

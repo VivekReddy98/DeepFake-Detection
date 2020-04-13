@@ -3,7 +3,7 @@
 from src.DataGenerator import MetaData, DataGenerator
 from src.architecture import DeepFakeDetector
 import json, math
-# import horovod.tensorflow.keras as hvd
+import horovod.tensorflow.keras as hvd
 import tensorflow as tf
 from tensorflow.keras import backend as K
 
@@ -26,31 +26,31 @@ if __name__ == "__main__":
 
     numSteps = len(trainDataGenerator)
 
-    # hvd.init()
-    #
-    # config = tf.ConfigProto()
-    # config.gpu_options.visible_device_list = str(hvd.local_rank())
-    # K.set_session(tf.Session(config=config))
-    #
-    # epochs = int(math.ceil(numSteps / hvd.size()))
-    #
-    # opt = tf.keras.optimizers.Adadelta(1.0 * hvd.size())
-    #
-    # opt = hvd.DistributedOptimizer(opt)
-    #
-    # DF.compile(optimizer=opt)
-    #
-    # callbacks = [
-    #     hvd.callbacks.BroadcastGlobalVariablesCallback(0),
-    # ]
-    #
-    # # Horovod: save checkpoints only on worker 0 to prevent other workers from corrupting them.
-    # if hvd.rank() == 0:
-    #     callbacks.append(tf.keras.callbacks.ModelCheckpoint('./weights/checkpoint-{epoch}.h5'))
+    hvd.init()
 
-    opt = tf.keras.optimizers.Adadelta(1.0)
+    config = tf.ConfigProto()
+    config.gpu_options.visible_device_list = str(hvd.local_rank())
+    K.set_session(tf.Session(config=config))
+
+    epochs = int(math.ceil(numSteps / hvd.size()))
+
+    opt = tf.keras.optimizers.Adadelta(1.0 * hvd.size())
+
+    opt = hvd.DistributedOptimizer(opt)
+
     DF.compile(optimizer=opt)
-    epochs = numSteps
+
+    callbacks = [
+        hvd.callbacks.BroadcastGlobalVariablesCallback(0),
+    ]
+
+    # Horovod: save checkpoints only on worker 0 to prevent other workers from corrupting them.
+    if hvd.rank() == 0:
+        callbacks.append(tf.keras.callbacks.ModelCheckpoint('./weights/checkpoint-{epoch}.h5'))
+
+    # opt = tf.keras.optimizers.Adadelta(1.0)
+    # DF.compile(optimizer=opt)
+    # epochs = numSteps
     DF.model.fit_generator(trainDataGenerator, steps_per_epoch=epochs, epochs=1, verbose=1, use_multiprocessing=False, workers=1) #callbacks=callbacks)
 
 

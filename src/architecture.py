@@ -106,8 +106,40 @@ class DeepFakeDetector:
         return None
 
 
-if __name__ == "__main__":
+'''
+TF Compatible Model Defintion
+'''
+class DeefFakeDetectorTF:
+    def __init__(self, frames):
+        self.FRAMES = frames
+
+    def build(self, custom_input_tensor, verbose=True):
+        '''
+        Run this under a session
+        '''
+        self.model = Sequential()
+
+        with tf.variable_scope('CustomModel'):
+            self.model.add(LSTM(units=512, input_shape=(self.FRAMES, 2048), dropout=0.5))
+            self.model.add(Dense(units=256, activation='relu'))
+            self.model.add(Dropout(rate=0.5))
+            self.model.add(Dense(2, activation='softmax'))
+
+        if verbose:
+            self.model.summary()
+
+
+
 
     inception_path = '../weights/InceptionV3_Non_Trainable.h5'
     DF = DeepFakeDetector(80)
     model = DF.build(inception_path, verbose=True)
+
+
+
+    '''
+    # opt = tf.keras.optimizers.Adadelta(1.0)
+    # DF.compile(optimizer=opt)
+    # epochs = numSteps
+    DF.model.fit_generator(trainDataGenerator, steps_per_epoch=epochs, epochs=1, verbose=1, use_multiprocessing=False, workers=1) #callbacks=callbacks)
+    '''
