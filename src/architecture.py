@@ -131,9 +131,9 @@ class DeefFakeDetectorTF:
 
 
 
-    inception_path = '../weights/InceptionV3_Non_Trainable.h5'
-    DF = DeepFakeDetector(80)
-    model = DF.build(inception_path, verbose=True)
+    # inception_path = '../weights/InceptionV3_Non_Trainable.h5'
+    # DF = DeepFakeDetector(80)
+    # model = DF.build(inception_path, verbose=True)
 
 
 

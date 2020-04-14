@@ -1,7 +1,8 @@
 #!/bin/python3
 
-from src.DataGenerator import MetaData, DataGenerator
-from src.architecture import DeepFakeDetector
+# from src.DataGenerator import MetaData, DataGenerator
+from src.architecture import DeepFakeDetector, DeefFakeDetectorTF
+from src.videp2tfrecordCustom import TfRecordDecoder, Video2TFRecord
 import json, math
 import horovod.tensorflow.keras as hvd
 import tensorflow as tf
