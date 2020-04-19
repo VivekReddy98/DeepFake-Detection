@@ -2,7 +2,7 @@
 
 # from src.DataGenerator import MetaData, DataGenerator
 from src.architecture import DeepFakeDetector, DeefFakeDetectorTF
-from src.videp2tfrecordCustom import TfRecordDecoder, Video2TFRecord
+from src.video2tfrecordCustom import TfRecordDecoder, Video2TFRecord
 import json, math
 import horovod.tensorflow.keras as hvd
 import tensorflow as tf
@@ -18,12 +18,6 @@ if __name__ == "__main__":
 
     with open('data/metadata.json') as f:
         data = json.load(f)
-
-    MD = MetaData("data/train", data, FRAME_COUNT_PER_EXAMPLE, NUM_SETS_PER_VIDEO) #sourcePath, labels, numFrames, numSetsPerVideo
-    trainDataGenerator = DataGenerator("data/train", BATCH_SIZE, MD)
-
-    DF = DeepFakeDetector(FRAME_COUNT_PER_EXAMPLE)
-    DF.build(inception_path, verbose=True)
 
     numSteps = len(trainDataGenerator)
 

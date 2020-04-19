@@ -8,6 +8,7 @@ import numpy as np
 import math, os, json, time
 import tensorflow as tf
 import multiprocessing
+import random
 
 '''
 Useful Links:
@@ -23,6 +24,19 @@ class TfRecordDecoder:
     def __init__(self, NUMFRAMES):
         self.NUMFRAMES = NUMFRAMES
 
+    # Can Feed this Iterator to Training
+    def _make_batch_iterator(self, tfrecord_files, batch_size, num_epochs):
+        dataset = tf.data.TFRecordDataset(tfrecord_files, compression_type="GZIP")
+        dataset = dataset.map(self.decode_tfrecord)
+        dataset = dataset.apply(tf.data.experimental.unbatch())
+        dataset = dataset.batch(batch_size)  # Because of TF 1.12, For New Versions, unbatch is a direct method for datset object
+        # dataset = dataset.repeat(num_epochs)
+        # dataset = dataset.apply(tf.data.experimental.prefetch_to_device())
+        # dataset = dataset.shuffle(len(tfrecord_files)*3, seed=random.randint(0, 100))
+        # dataset = tf.data.Dataset.zip((dataset))
+        # dataset = dataset.prefetch(5)
+        return dataset #.make_one_shot_iterator()
+
     def decode_tfrecord(self, serialized_example):
 
         parsed_data = tf.parse_single_example(serialized_example, features={
@@ -33,15 +47,20 @@ class TfRecordDecoder:
                                                   })
 
         image = tf.decode_raw(parsed_data['image_raw'], tf.float32)
-        annotation = tf.decode_raw(parsed_data['labels_raw'], tf.int8)
+        annotation = tf.decode_raw(parsed_data['labels_raw'], tf.int64)
 
         vector_dimensions = tf.cast(parsed_data['vector_size'], tf.int32)
         batch_dim = tf.cast(parsed_data['batch_size'], tf.int32)
 
+        print(tf.shape(annotation), tf.shape(image))
         image = tf.reshape(image, [batch_dim/self.NUMFRAMES, self.NUMFRAMES, vector_dimensions])
-        annotation = tf.reshape(annotation, (1,2))
+        print(tf.shape(annotation), tf.shape(image))
 
-        annotation = tf.ones([batch_dim/NUMFRAMES, 1], tf.int8) * annotation
+        annotation = tf.reshape(annotation, (1,2))
+        annotation = tf.ones([batch_dim/NUMFRAMES, 1], tf.int64) * annotation
+
+        annotation = tf.cast(annotation, dtype=tf.int8)
+        # print(tf.shape(annotation), tf.shape(image))
 
         return image, annotation
 
@@ -210,6 +229,26 @@ def _float32_feature(value):
 
 if __name__ == "__main__":
 
+    FRAME_COUNT_PER_EXAMPLE = 80
+
+    config = tf.ConfigProto()
+    config.gpu_options.allow_growth = True
+    sess = tf.Session(config=config)
+
+    tfrecord_files = gfile.Glob(os.path.join("../data/records/", "*.tfrecords"))
+    decoder = TfRecordDecoder(FRAME_COUNT_PER_EXAMPLE)
+    iterator = tf.data.Iterator.from_structure((tf.float32, tf.int8), (tf.TensorShape([None, FRAME_COUNT_PER_EXAMPLE, 2048]), tf.TensorShape([None, 2])))
+    dataset = decoder._make_batch_iterator(tfrecord_files, 10, 4)
+
+    # iterator = dataset.make_one_shot_iterator()
+    data_initializer_op = iterator.make_initializer(dataset)
+    next_batch = iterator.get_next()
+    sess.run(data_initializer_op)
+    for _ in range(0,10):
+        batch_videos, batch_labels = sess.run(next_batch)
+        print(batch_videos.shape, batch_labels.shape, np.sum(batch_videos), batch_labels)
+
+    '''                                              Create TFRecords
     with open('../data/metadata.json') as f:
         data = json.load(f)
 
@@ -220,29 +259,32 @@ if __name__ == "__main__":
     filenames =  [name.split(os.path.sep)[-1] for name in filenames]
 
     V2TF.convert_videos_to_tfrecordv2(filenames)
+    '''
 
+    '''                                              Decode Records
+    sess = tf.Session()
+
+    init_op = tf.group(
+        tf.global_variables_initializer(),
+        tf.local_variables_initializer())
+
+    sess.run(init_op)
+
+    tfrecord_files = gfile.Glob(os.path.join("../data/", "*.tfrecords"))
     # sess = tf.Session()
-    #
-    # init_op = tf.group(
-    #     tf.global_variables_initializer(),
-    #     tf.local_variables_initializer())
-    #
-    # sess.run(init_op)
+    dataset = tf.data.TFRecordDataset(tfrecord_files, compression_type="GZIP")
 
-    # tfrecord_files = gfile.Glob(os.path.join("../data/", "*.tfrecords"))
-    # # sess = tf.Session()
-    # dataset = tf.data.TFRecordDataset(tfrecord_files, compression_type="GZIP")
-    #
-    # print(dataset)
-    #
-    # decode = TfRecordDecoder(80)
-    #
-    # dataset = dataset.map(decode.decode_tfrecord)
-    # iterator = dataset.make_one_shot_iterator()
-    # next_batch = iterator.get_next()
-    #
-    # batch_videos, batch_labels = sess.run(next_batch)
-    #
-    # print(np.sum(batch_videos),  np.sum(batch_videos, axis=2))
-    #
-    # print(batch_videos.shape, batch_labels.shape)
+    print(dataset)
+
+    decode = TfRecordDecoder(80)
+
+    dataset = dataset.map(decode.decode_tfrecord)
+    iterator = dataset.make_one_shot_iterator()
+    next_batch = iterator.get_next()
+
+    batch_videos, batch_labels = sess.run(next_batch)
+
+    print(np.sum(batch_videos),  np.sum(batch_videos, axis=2))
+
+    print(batch_videos.shape, batch_labels.shape)
+    '''

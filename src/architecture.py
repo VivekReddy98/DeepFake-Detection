@@ -3,7 +3,12 @@ from tensorflow.keras import backend as K
 from tensorflow.keras import Sequential, Input
 from tensorflow.keras.layers import TimeDistributed, Dense, LSTM, Dropout
 from tensorflow.keras.applications import InceptionV3
+from tensorflow.keras.backend import categorical_crossentropy
 
+
+
+def cross_entropy_loss(y_true, y_pred):
+    return tf.reduce_mean(categorical_crossentropy(y_true, y_pred))
 
 def recall_m(y_true, y_pred):
     true_positives = K.sum(K.round(K.clip(y_true * y_pred, 0, 1)))
@@ -21,6 +26,10 @@ def f1_m(y_true, y_pred):
     precision = precision_m(y_true, y_pred)
     recall = recall_m(y_true, y_pred)
     return 2*((precision*recall)/(precision+recall+K.epsilon()))
+
+def acc(y_true, y_pred):
+    (val, _) = tf.metrics.accuracy(y_true, y_pred)
+    return val
 
 
 class DeepFakeDetector:
@@ -113,20 +122,18 @@ class DeefFakeDetectorTF:
     def __init__(self, frames):
         self.FRAMES = frames
 
-    def build(self, custom_input_tensor, verbose=True):
+    def build(self, input, scope_name="LSTM"):
         '''
         Run this under a session
         '''
-        self.model = Sequential()
+        with tf.variable_scope(scope_name):
+            x = LSTM(units=512, input_shape=(None, self.FRAMES, None), dropout=0.5)(input)
+            x = Dense(units=256, activation='relu')(x)
+            x = Dropout(rate=0.5)(x)
+            preds = Dense(2, activation='softmax')(x)
 
-        with tf.variable_scope('CustomModel'):
-            self.model.add(LSTM(units=512, input_shape=(self.FRAMES, 2048), dropout=0.5))
-            self.model.add(Dense(units=256, activation='relu'))
-            self.model.add(Dropout(rate=0.5))
-            self.model.add(Dense(2, activation='softmax'))
+        return preds
 
-        if verbose:
-            self.model.summary()
 
 
 
@@ -138,8 +145,26 @@ class DeefFakeDetectorTF:
 
 
     '''
+    FRAME_COUNT_PER_EXAMPLE = 60
+    BATCH_SIZE = 8
+    NUM_SETS_PER_VIDEO = 4
+
+    inception_path = 'weights/InceptionV3_Non_Trainable.h5'
+
+    with open('data/metadata.json') as f:
+        data = json.load(f)
+
+    MD = MetaData("data/train", data, FRAME_COUNT_PER_EXAMPLE, NUM_SETS_PER_VIDEO) #sourcePath, labels, numFrames, numSetsPerVideo
+    trainDataGenerator = DataGenerator("data/train", BATCH_SIZE, MD)
+
+    DF = DeepFakeDetector(FRAME_COUNT_PER_EXAMPLE)
     # opt = tf.keras.optimizers.Adadelta(1.0)
     # DF.compile(optimizer=opt)
     # epochs = numSteps
     DF.model.fit_generator(trainDataGenerator, steps_per_epoch=epochs, epochs=1, verbose=1, use_multiprocessing=False, workers=1) #callbacks=callbacks)
     '''
+
+
+if __name__ == "__main__":
+    DF = DeefFakeDetectorTF(80)
+    DF.build()
