@@ -28,8 +28,8 @@ def f1_m(y_true, y_pred):
     return 2*((precision*recall)/(precision+recall+K.epsilon()))
 
 def acc(y_true, y_pred):
-    (val, _) = tf.metrics.accuracy(y_true, y_pred)
-    return val
+    (val, op) = tf.metrics.accuracy(y_true, y_pred)
+    return op
 
 
 class DeepFakeDetector:

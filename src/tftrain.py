@@ -5,6 +5,7 @@ from tensorflow.python.platform import gfile
 import horovod.tensorflow.keras as hvd
 import tensorflow as tf
 from tensorflow.keras import backend as K
+import numpy as np
 
 if __name__ == "__main__":
 
@@ -51,15 +52,15 @@ if __name__ == "__main__":
     with sess.as_default():
         sess.run(variable_initializer_op)
         sess.run(local_variable_initializer_op)
-        for step in range(10):
+        for step in range(4):
             sess.run(data_initializer_op)
             while True:
                 try:
-                    batch_videos, batch_labels = sess.run([input, labels])
-                    print(batch_videos.shape, batch_labels.shape)
-                    # train_step.run(feed_dict={K.learning_phase(): 1}) #feed_dict={input: train_x, labels: train_y, K.learning_phase(): 1}
-                    # [loss_val, acc_op, f1_op] = sess.run(metrics_op, feed_dict={K.learning_phase(): 0})
-                    # print("Step: %d, Loss: %f, Accuracy: %f, F1: %f\n" % (step+1, loss_val, acc_op, f1_op))
+                    # batch_videos, batch_labels = sess.run([input, labels])
+                    # print(step, batch_videos.shape, batch_labels.shape, np.sum(batch_videos), np.sum(batch_labels))
+                    train_step.run(feed_dict={K.learning_phase(): 1}) #feed_dict={input: train_x, labels: train_y, K.learning_phase(): 1}
+                    [loss_val, acc_op, f1_op] = sess.run(metrics_op, feed_dict={K.learning_phase(): 0})
+                    print("Step: %d, Loss: %f, Accuracy: %f, F1: %f" % (step+1, loss_val, acc_op, f1_op))
                 except tf.errors.OutOfRangeError:
-                    print("Breaking off\n")
+                    # print("Breaking off\n")
                     break

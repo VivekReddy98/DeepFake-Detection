@@ -26,15 +26,16 @@ class TfRecordDecoder:
 
     # Can Feed this Iterator to Training
     def _make_batch_iterator(self, tfrecord_files, batch_size, num_epochs):
+        random.shuffle(tfrecord_files)
         dataset = tf.data.TFRecordDataset(tfrecord_files, compression_type="GZIP")
         dataset = dataset.map(self.decode_tfrecord)
         dataset = dataset.apply(tf.data.experimental.unbatch())
         dataset = dataset.batch(batch_size)  # Because of TF 1.12, For New Versions, unbatch is a direct method for datset object
         # dataset = dataset.repeat(num_epochs)
         # dataset = dataset.apply(tf.data.experimental.prefetch_to_device())
-        # dataset = dataset.shuffle(len(tfrecord_files)*3, seed=random.randint(0, 100))
+        dataset = dataset.shuffle(len(tfrecord_files)*3+2)
         # dataset = tf.data.Dataset.zip((dataset))
-        # dataset = dataset.prefetch(5)
+        dataset = dataset.prefetch(5)
         return dataset #.make_one_shot_iterator()
 
     def decode_tfrecord(self, serialized_example):
