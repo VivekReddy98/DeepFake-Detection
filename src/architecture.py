@@ -1,10 +1,10 @@
 import tensorflow as tf
+from tensorflow.keras.models import Model
 from tensorflow.keras import backend as K
 from tensorflow.keras import Sequential, Input
 from tensorflow.keras.layers import TimeDistributed, Dense, LSTM, Dropout
 from tensorflow.keras.applications import InceptionV3
 from tensorflow.keras.backend import categorical_crossentropy
-
 
 
 def cross_entropy_loss(y_true, y_pred):
@@ -115,6 +115,9 @@ class DeepFakeDetector:
         return None
 
 
+
+
+
 '''
 TF Compatible Model Defintion
 '''
@@ -122,7 +125,7 @@ class DeefFakeDetectorTF:
     def __init__(self, frames):
         self.FRAMES = frames
 
-    def build(self, input, scope_name="LSTM"):
+    def buildTF(self, input, scope_name="LSTM"):
         '''
         Run this under a session
         '''
@@ -133,6 +136,18 @@ class DeefFakeDetectorTF:
             preds = Dense(2, activation='softmax')(x)
 
         return preds
+
+    def build(self, input):
+        '''
+        Run this under a session
+        '''
+        input_val = Input(shape=(80, 2048), tensor=input)
+        x = LSTM(units=512, input_shape=(None, self.FRAMES, None), dropout=0.5)(input_val)
+        x = Dense(units=256, activation='relu')(x)
+        x = Dropout(rate=0.5)(x)
+        preds = Dense(2, activation='softmax')(x)
+        model = Model(inputs=input_val, outputs=preds)
+        return model
 
 
 

@@ -19,7 +19,6 @@ http://warmspringwinds.github.io/tensorflow/tf-slim/2016/12/21/tfrecords-guide/
 
 NUMFRAMES = 80
 
-
 class TfRecordDecoder:
     def __init__(self, NUMFRAMES):
         self.NUMFRAMES = NUMFRAMES
@@ -32,6 +31,19 @@ class TfRecordDecoder:
         dataset = dataset.apply(tf.data.experimental.unbatch())
         dataset = dataset.batch(batch_size)  # Because of TF 1.12, For New Versions, unbatch is a direct method for datset object
         # dataset = dataset.repeat(num_epochs)
+        # dataset = dataset.apply(tf.data.experimental.prefetch_to_device())
+        dataset = dataset.shuffle(len(tfrecord_files)*3+2)
+        # dataset = tf.data.Dataset.zip((dataset))
+        dataset = dataset.prefetch(5)
+        return dataset #.make_one_shot_iterator()
+
+    def _make_batch_iterator_keras(self, tfrecord_files, batch_size, num_epochs):
+        random.shuffle(tfrecord_files)
+        dataset = tf.data.TFRecordDataset(tfrecord_files, compression_type="GZIP")
+        dataset = dataset.map(self.decode_tfrecord)
+        dataset = dataset.apply(tf.data.experimental.unbatch())
+        dataset = dataset.batch(batch_size)  # Because of TF 1.12, For New Versions, unbatch is a direct method for datset object
+        dataset = dataset.repeat(num_epochs)
         # dataset = dataset.apply(tf.data.experimental.prefetch_to_device())
         dataset = dataset.shuffle(len(tfrecord_files)*3+2)
         # dataset = tf.data.Dataset.zip((dataset))
@@ -53,9 +65,9 @@ class TfRecordDecoder:
         vector_dimensions = tf.cast(parsed_data['vector_size'], tf.int32)
         batch_dim = tf.cast(parsed_data['batch_size'], tf.int32)
 
-        print(tf.shape(annotation), tf.shape(image))
+        # print(tf.shape(annotation), tf.shape(image))
         image = tf.reshape(image, [batch_dim/self.NUMFRAMES, self.NUMFRAMES, vector_dimensions])
-        print(tf.shape(annotation), tf.shape(image))
+        # print(tf.shape(annotation), tf.shape(image))
 
         annotation = tf.reshape(annotation, (1,2))
         annotation = tf.ones([batch_dim/NUMFRAMES, 1], tf.int64) * annotation
@@ -90,8 +102,8 @@ class Video2TFRecord:
             # args_process.append((file,self.df[file]["label"],split))
             self.MP.save_video_as_tf_records_ylabels(file,self.df[file]["label"],split)
             count += 1
-            if (count > 50):
-                break
+            # if (count > 50):
+            #     break
         # num_cores = multiprocessing.cpu_count()
         # p = multiprocessing.Pool(num_cores)
         # p.starmap(self.MP.save_video_as_tf_records_ylabels, args_process)
@@ -111,6 +123,12 @@ class TFRecordGenerator:
         self.CNN_VECTORIZER = tf.keras.models.load_model(inception_path)
 
     def save_video_as_tf_records_ylabels(self, file, label, split):
+
+        tfrecords_filename = os.path.join(self.OUT_PATH, file.split('.')[0] + "_" + split + '.tfrecords')
+
+        if os.path.exists(tfrecords_filename):
+            print("{0} file aready exists".format(tfrecords_filename))
+            return 1;
 
         start_time = time.time()
         file_path = os.path.join(self.SRC_PATH, file)
@@ -139,8 +157,6 @@ class TFRecordGenerator:
         # print(np.sum(predictions), np.sum(predictions, axis=1))
 
         # print("--- Model Inference Took: %s seconds ---" % (time.time() - start_cnn))
-
-        tfrecords_filename = os.path.join(self.OUT_PATH, file.split('.')[0] + "_" + split + '.tfrecords')
 
         # print(tfrecords_filename)
 
@@ -229,7 +245,7 @@ def _float32_feature(value):
   return tf.train.Feature(float_list=tf.train.FloatList(value=[value]))
 
 if __name__ == "__main__":
-
+    '''                                               Generating Tranable Iterators out of Records
     FRAME_COUNT_PER_EXAMPLE = 80
 
     config = tf.ConfigProto()
@@ -248,8 +264,9 @@ if __name__ == "__main__":
     for _ in range(0,10):
         batch_videos, batch_labels = sess.run(next_batch)
         print(batch_videos.shape, batch_labels.shape, np.sum(batch_videos), batch_labels)
+    '''
 
-    '''                                              Create TFRecords
+    #'''                                              Create TFRecords
     with open('../data/metadata.json') as f:
         data = json.load(f)
 
@@ -259,8 +276,10 @@ if __name__ == "__main__":
 
     filenames =  [name.split(os.path.sep)[-1] for name in filenames]
 
+    print(filenames)
+
     V2TF.convert_videos_to_tfrecordv2(filenames)
-    '''
+
 
     '''                                              Decode Records
     sess = tf.Session()
