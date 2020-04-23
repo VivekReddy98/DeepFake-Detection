@@ -16,7 +16,7 @@ if __name__ == "__main__":
 
     FRAME_COUNT_PER_EXAMPLE = 80
     BATCH_SIZE = 16
-    NUM_EPOCHS = 5
+    NUM_EPOCHS = 10
 
     # Get the dataset from tfrecords
     tfrecord_files = gfile.Glob(os.path.join("../data/records/", "*.tfrecords"))
@@ -36,8 +36,8 @@ if __name__ == "__main__":
     model = DF.build(input)
     opt = tf.keras.optimizers.Adam(lr=1e-05)
     met = ['acc', f1_m, precision_m, recall_m]
-
     model.compile(optimizer=opt, loss='categorical_crossentropy', metrics = met, target_tensors=[labels])
 
+    # Train the Model
     sess.run(data_initializer_op)
     model.fit(steps_per_epoch=int(num_files*(240/FRAME_COUNT_PER_EXAMPLE)/BATCH_SIZE), epochs=NUM_EPOCHS, verbose=1)

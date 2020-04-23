@@ -9,6 +9,8 @@ import math, os, json, time
 import tensorflow as tf
 import multiprocessing
 import random
+import concurrent.futures
+from threading import Thread, Lock
 
 '''
 Useful Links:
@@ -17,7 +19,10 @@ https://medium.com/mostly-ai/tensorflow-records-what-they-are-and-how-to-use-the
 http://warmspringwinds.github.io/tensorflow/tf-slim/2016/12/21/tfrecords-guide/
 '''
 
-NUMFRAMES = 80
+# global mutex
+
+mutex = Lock()
+
 
 class TfRecordDecoder:
     def __init__(self, NUMFRAMES):
@@ -70,7 +75,7 @@ class TfRecordDecoder:
         # print(tf.shape(annotation), tf.shape(image))
 
         annotation = tf.reshape(annotation, (1,2))
-        annotation = tf.ones([batch_dim/NUMFRAMES, 1], tf.int64) * annotation
+        annotation = tf.ones([batch_dim/self.NUMFRAMES, 1], tf.int64) * annotation
 
         annotation = tf.cast(annotation, dtype=tf.int8)
         # print(tf.shape(annotation), tf.shape(image))
@@ -96,12 +101,25 @@ class Video2TFRecord:
     def convert_videos_to_tfrecordv2(self, filenames, split='train'):
         assert split in ['train', 'val', 'test']
         print('Total videos found: ' + str(len(filenames)) + " Split: " + split)
-        args_process = []
+        files_process = []
+        labels_process = []
+        split_process = []
         count = 0
         for file in filenames:
-            # args_process.append((file,self.df[file]["label"],split))
             self.MP.save_video_as_tf_records_ylabels(file,self.df[file]["label"],split)
-            count += 1
+            # files_process.append(file)
+            # labels_process.append(self.df[file]["label"])
+            # split_process.append(split)
+            # args_process.append((file,,split))
+
+        # with concurrent.futures.ThreadPoolExecutor(max_workers = 8) as executor:
+        #     results = executor.map(self.MP.save_video_as_tf_records_ylabels, files_process, labels_process, split_process)
+
+        # concurrent.futures.wait(results, timeout=None, return_when=ALL_COMPLETED)
+            # for result in results:
+            #     print(result)
+            # self.MP.save_video_as_tf_records_ylabels(file,self.df[file]["label"],split)
+            # count += 1
             # if (count > 50):
             #     break
         # num_cores = multiprocessing.cpu_count()
@@ -128,7 +146,7 @@ class TFRecordGenerator:
 
         if os.path.exists(tfrecords_filename):
             print("{0} file aready exists".format(tfrecords_filename))
-            return 1;
+            return 0;
 
         start_time = time.time()
         file_path = os.path.join(self.SRC_PATH, file)
@@ -151,7 +169,12 @@ class TFRecordGenerator:
 
         buf.astype("float32")
         start_cnn = time.time()
+        # mutex.acquire()
+        # try:
         predictions = self.CNN_VECTORIZER.predict(buf)
+        # finally:
+        #     mutex.release()
+
         predictions = predictions.astype('float32')
 
         # print(np.sum(predictions), np.sum(predictions, axis=1))
@@ -270,13 +293,13 @@ if __name__ == "__main__":
     with open('../data/metadata.json') as f:
         data = json.load(f)
 
-    V2TF = Video2TFRecord("../data/train", "../data/records", data, "../weights/InceptionV3_Non_Trainable.h5")
+    V2TF = Video2TFRecord("../data/train", "../data/RecordsTest/", data, "../weights/InceptionV3_Non_Trainable.h5")
 
     filenames = gfile.Glob(os.path.join("../data/train", "*.mp4"))
 
     filenames =  [name.split(os.path.sep)[-1] for name in filenames]
 
-    print(filenames)
+    # print(filenames)
 
     V2TF.convert_videos_to_tfrecordv2(filenames)
 
