@@ -21,6 +21,11 @@ def partitionList(filenames, rank, size):
         max = max + numFiles%size
     return filenames[low:max]
 
+def getSplits(filenames, splits=(90,5,5)):
+    numFiles = len(filenames)
+    train_end = int(numFiles*splits[0]/100)
+    val_end = int(numFiles*(splits[0]+splits[1])/100)
+    return (filenames[0:train_end], filenames[train_end:val_end], filenames[val_end:])
 
 if __name__ == "__main__":
 
@@ -44,7 +49,14 @@ if __name__ == "__main__":
 
     V2TF = Video2TFRecord(src_path, dest_path, data, "weights/InceptionV3_Non_Trainable.h5")
 
+    (train_split, val_split, test_split) = getSplits(myfiles)
+
+    assert len(myfiles) == len(train_split) + len(val_split) + len(test_split)
+
     try:
-        V2TF.convert_videos_to_tfrecordv2(myfiles)
+        V2TF.convert_videos_to_tfrecordv2(train_split, split='train')
+        V2TF.convert_videos_to_tfrecordv2(val_split, split='val')
+        V2TF.convert_videos_to_tfrecordv2(test_split, split='test')
     except:
-        print("Error")
+        time.sleep(5)
+        print("Error in Conversion")

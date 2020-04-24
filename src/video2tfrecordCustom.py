@@ -5,7 +5,7 @@ from tensorflow.python.platform import flags
 from tensorflow.python.platform import app
 import cv2 as cv2
 import numpy as np
-import math, os, json, time
+import math, os, json, time, sys, glob
 import tensorflow as tf
 import multiprocessing
 import random
@@ -144,66 +144,81 @@ class TFRecordGenerator:
 
         tfrecords_filename = os.path.join(self.OUT_PATH, file.split('.')[0] + "_" + split + '.tfrecords')
 
-        if os.path.exists(tfrecords_filename):
+        # print(tfrecords_filename)
+
+        check_filename = os.path.join(self.OUT_PATH, file.split('.')[0])
+        file_exists = glob.glob(check_filename+"_*.tfrecords")
+
+        # print(file_exists)
+
+        if file_exists:
             print("{0} file aready exists".format(tfrecords_filename))
             return 0;
 
         start_time = time.time()
         file_path = os.path.join(self.SRC_PATH, file)
-        cap = cv2.VideoCapture(file_path)
 
-        frameCount = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        frameWidth = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        frameHeight = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        try:
+            cap = cv2.VideoCapture(file_path)
 
-        buf = np.empty((self.N_FRMS_PER_SAMPLE, self.WIDTH, self.HEIGHT, 3), np.dtype('float32'))
+            frameCount = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            frameWidth = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            frameHeight = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-        fc = 0
-        while (fc < self.N_FRMS_PER_SAMPLE):
-            ret, frame = cap.read()
-            frame= cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            frame = self.central_crop(frame, 0.875)
-            frame = cv2.resize(frame, (299, 299), interpolation = cv2.INTER_AREA)
-            buf[fc] = tf.keras.applications.inception_v3.preprocess_input(frame)
-            fc += 1
+            buf = np.empty((self.N_FRMS_PER_SAMPLE, self.WIDTH, self.HEIGHT, 3), np.dtype('float32'))
 
-        buf.astype("float32")
-        start_cnn = time.time()
-        # mutex.acquire()
-        # try:
-        predictions = self.CNN_VECTORIZER.predict(buf)
-        # finally:
-        #     mutex.release()
+            fc = 0
 
-        predictions = predictions.astype('float32')
+            while (fc < self.N_FRMS_PER_SAMPLE):
+                ret, frame = cap.read()
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                frame = self.central_crop(frame, 0.875)
+                frame = cv2.resize(frame, (299, 299), interpolation = cv2.INTER_AREA)
+                buf[fc] = tf.keras.applications.inception_v3.preprocess_input(frame)
+                fc += 1
 
-        # print(np.sum(predictions), np.sum(predictions, axis=1))
-
-        # print("--- Model Inference Took: %s seconds ---" % (time.time() - start_cnn))
-
-        # print(tfrecords_filename)
-
-        # Gzip Compression
-        options = tf.python_io.TFRecordOptions(tf.python_io.TFRecordCompressionType.GZIP)
-        writer = tf.python_io.TFRecordWriter(tfrecords_filename, options=options)
-
-        if label == "FAKE":
-            y_label = np.array([1, 0], dtype=np.int64)
-        else:
-            y_label = np.array([0, 1], dtype=np.int64)
+            buf.astype("float32")
+            start_cnn = time.time()
+            # mutex.acquire()
+            # try:
+            predictions = self.CNN_VECTORIZER.predict(buf)
+            # finally:
+            #     mutex.release()
 
 
-        img_raw = predictions.tostring()
-        labels_raw = y_label.tostring()
+            predictions = predictions.astype('float32')
 
-        example = tf.train.Example(features=tf.train.Features(feature={ 'vector_size': int64_feature(predictions.shape[1]),
-                                                                        'batch_size': int64_feature(predictions.shape[0]),
-                                                                        'image_raw': bytes_feature(img_raw),
-                                                                        'labels_raw': bytes_feature(labels_raw)}))
+            # print(np.sum(predictions), np.sum(predictions, axis=1))
 
-        writer.write(example.SerializeToString())
-        writer.close()
-        print("--- Record Generated for file {0}, in {1} seconds --- \n".format(file, str(time.time() - start_time)))
+            # print("--- Model Inference Took: %s seconds ---" % (time.time() - start_cnn))
+
+            # print(tfrecords_filename)
+
+            # Gzip Compression
+            options = tf.python_io.TFRecordOptions(tf.python_io.TFRecordCompressionType.GZIP)
+            writer = tf.python_io.TFRecordWriter(tfrecords_filename, options=options)
+
+            if label == "FAKE":
+                y_label = np.array([1, 0], dtype=np.int64)
+            else:
+                y_label = np.array([0, 1], dtype=np.int64)
+
+
+            img_raw = predictions.tostring()
+            labels_raw = y_label.tostring()
+
+            example = tf.train.Example(features=tf.train.Features(feature={ 'vector_size': int64_feature(predictions.shape[1]),
+                                                                            'batch_size': int64_feature(predictions.shape[0]),
+                                                                            'image_raw': bytes_feature(img_raw),
+                                                                            'labels_raw': bytes_feature(labels_raw)}))
+
+            writer.write(example.SerializeToString())
+            writer.close()
+            print("--- Record Generated for file {0} of split {1}, in {2} seconds --- \n".format(file, split, str(time.time() - start_time)))
+            sys.stdout.flush()
+        except Exception as e:
+            print(e + "for file: " + tfrecords_filename)
+
         return 1
 
 
@@ -293,13 +308,11 @@ if __name__ == "__main__":
     with open('../data/metadata.json') as f:
         data = json.load(f)
 
-    V2TF = Video2TFRecord("../data/train", "../data/RecordsTest/", data, "../weights/InceptionV3_Non_Trainable.h5")
+    V2TF = Video2TFRecord("../data/train", "../data/records/", data, "../weights/InceptionV3_Non_Trainable.h5")
 
     filenames = gfile.Glob(os.path.join("../data/train", "*.mp4"))
 
     filenames =  [name.split(os.path.sep)[-1] for name in filenames]
-
-    # print(filenames)
 
     V2TF.convert_videos_to_tfrecordv2(filenames)
 
