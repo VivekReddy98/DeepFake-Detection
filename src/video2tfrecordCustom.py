@@ -29,6 +29,7 @@ class TfRecordDecoder:
         self.NUMFRAMES = NUMFRAMES
 
     # Can Feed this Iterator to Training
+    # https://github.com/tensorflow/tensorflow/issues/30646
     def _make_batch_iterator(self, tfrecord_files, batch_size, num_epochs):
         random.shuffle(tfrecord_files)
         dataset = tf.data.TFRecordDataset(tfrecord_files, compression_type="GZIP")
@@ -37,22 +38,24 @@ class TfRecordDecoder:
         dataset = dataset.batch(batch_size)  # Because of TF 1.12, For New Versions, unbatch is a direct method for datset object
         # dataset = dataset.repeat(num_epochs)
         # dataset = dataset.apply(tf.data.experimental.prefetch_to_device())
-        dataset = dataset.shuffle(len(tfrecord_files)*3+2)
+        # dataset = dataset.shuffle(len(tfrecord_files)*3+2)
         # dataset = tf.data.Dataset.zip((dataset))
         dataset = dataset.prefetch(5)
         return dataset #.make_one_shot_iterator()
 
+    # https://github.com/tensorflow/tensorflow/issues/30646
     def _make_batch_iterator_keras(self, tfrecord_files, batch_size, num_epochs):
         random.shuffle(tfrecord_files)
         dataset = tf.data.TFRecordDataset(tfrecord_files, compression_type="GZIP")
+        dataset = dataset.apply(tf.data.experimental.shuffle_and_repeat(buffer_size=2048, count=num_epochs))
         dataset = dataset.map(self.decode_tfrecord)
         dataset = dataset.apply(tf.data.experimental.unbatch())
         dataset = dataset.batch(batch_size)  # Because of TF 1.12, For New Versions, unbatch is a direct method for datset object
-        dataset = dataset.repeat(num_epochs)
+        # dataset = dataset.repeat(num_epochs)
         # dataset = dataset.apply(tf.data.experimental.prefetch_to_device())
-        dataset = dataset.shuffle(len(tfrecord_files)*3+2)
+        # dataset = dataset.shuffle(len(tfrecord_files)*3+2)
         # dataset = tf.data.Dataset.zip((dataset))
-        dataset = dataset.prefetch(5)
+        dataset = dataset.prefetch(10)
         return dataset #.make_one_shot_iterator()
 
     def decode_tfrecord(self, serialized_example):
@@ -142,6 +145,8 @@ class TFRecordGenerator:
 
     def save_video_as_tf_records_ylabels(self, file, label, split):
 
+        orig = 0
+
         tfrecords_filename = os.path.join(self.OUT_PATH, file.split('.')[0] + "_" + split + '.tfrecords')
 
         # print(tfrecords_filename)
@@ -167,6 +172,11 @@ class TFRecordGenerator:
 
             buf = np.empty((self.N_FRMS_PER_SAMPLE, self.WIDTH, self.HEIGHT, 3), np.dtype('float32'))
 
+            if (frameCount < 240):
+                print("Framecount too less to extract for file: " + tfrecords_filename + " frameCount: " + frameCount)
+                orig = self.N_FRMS_PER_SAMPLE
+                self.N_FRMS_PER_SAMPLE = frameCount - frameCount%80
+
             fc = 0
 
             while (fc < self.N_FRMS_PER_SAMPLE):
@@ -185,13 +195,10 @@ class TFRecordGenerator:
             # finally:
             #     mutex.release()
 
-
             predictions = predictions.astype('float32')
 
             # print(np.sum(predictions), np.sum(predictions, axis=1))
-
             # print("--- Model Inference Took: %s seconds ---" % (time.time() - start_cnn))
-
             # print(tfrecords_filename)
 
             # Gzip Compression
@@ -214,11 +221,14 @@ class TFRecordGenerator:
 
             writer.write(example.SerializeToString())
             writer.close()
-            print("--- Record Generated for file {0} of split {1}, in {2} seconds --- \n".format(file, split, str(time.time() - start_time)))
+            print("--- Record Generated for file {0} of split {1}, in {2} seconds --- ".format(file, split, str(time.time() - start_time)))
             sys.stdout.flush()
+
         except Exception as e:
+            self.N_FRMS_PER_SAMPLE = orig
             print(e + "for file: " + tfrecords_filename)
 
+        self.N_FRMS_PER_SAMPLE = orig
         return 1
 
 

@@ -31,32 +31,42 @@ if __name__ == "__main__":
 
     hvd.init()
 
-    if len(sys.argv) != 4:
+    if len(sys.argv) != 3:
     	print("Usage:", sys.argv[0], "src_path dest_path file_suffix")
     	sys.exit()
 
-    src_path = sys.argv[1]
-    dest_path = sys.argv[2]
-    file_suffix = sys.argv[3]
+    src_root_path = "/mnt/beegfs/ppatel27/data/dfdc_train_part_"
+    dest_path = sys.argv[1]
+    file_suffix = sys.argv[2]
 
-    with open(os.path.join(src_path,"metadata.json")) as f:
-        data = json.load(f)
+    # loop_list = [str(i) for i in range(7,16)]
+    # print(loop_list)
 
-    filenames = gfile.Glob(os.path.join(src_path, "*."+ file_suffix))
-    filenames =  [name.split(os.path.sep)[-1] for name in filenames]
+    # loop_list = ['7', '8', '9', '10', '11', '12', '13', '15', '24', '25', '26']
+    loop_list = ['14']
 
-    myfiles = partitionList(filenames, hvd.rank(), hvd.size())
+    for video in loop_list:
+        src_path = src_root_path + video
 
-    V2TF = Video2TFRecord(src_path, dest_path, data, "weights/InceptionV3_Non_Trainable.h5")
+        with open(os.path.join(src_path,"metadata.json")) as f:
+            data = json.load(f)
 
-    (train_split, val_split, test_split) = getSplits(myfiles)
+        filenames = gfile.Glob(os.path.join(src_path, "*."+ file_suffix))
+        filenames =  [name.split(os.path.sep)[-1] for name in filenames]
 
-    assert len(myfiles) == len(train_split) + len(val_split) + len(test_split)
+        myfiles = partitionList(filenames, hvd.rank(), hvd.size())
 
-    try:
-        V2TF.convert_videos_to_tfrecordv2(train_split, split='train')
-        V2TF.convert_videos_to_tfrecordv2(val_split, split='val')
-        V2TF.convert_videos_to_tfrecordv2(test_split, split='test')
-    except:
-        time.sleep(5)
-        print("Error in Conversion")
+        V2TF = Video2TFRecord(src_path, dest_path, data, "weights/InceptionV3_Non_Trainable.h5")
+
+        (train_split, val_split, test_split) = getSplits(myfiles, splits=(50,25,25))
+
+        assert len(myfiles) == len(train_split) + len(val_split) + len(test_split)
+
+        try:
+            V2TF.convert_videos_to_tfrecordv2(train_split, split='train')
+            V2TF.convert_videos_to_tfrecordv2(val_split, split='val')
+            V2TF.convert_videos_to_tfrecordv2(test_split, split='test')
+            time.sleep(5)
+        except:
+            time.sleep(5)
+            print("Error in Conversion video set : " + src_path)
