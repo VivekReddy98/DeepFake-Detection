@@ -70,7 +70,6 @@ if __name__ == "__main__":
     #    --------------------------------------------------------------- Train Data --------------------------------------------
     tfrecord_train_files = gfile.Glob(os.path.join(src_path, "*_train.tfrecords"))
     num_files_train = len(tfrecord_train_files)
-    # print("Num Records Found: {0}".format(num_files))
     decoder_train = TfRecordDecoder(FRAME_COUNT_PER_EXAMPLE)
     # train_iterator = tf.data.Iterator.from_structure((tf.float32, tf.int8), (tf.TensorShape([None, FRAME_COUNT_PER_EXAMPLE, 2048]), tf.TensorShape([None, 2])))
     # dataset_train = decoder_train._make_batch_iterator_keras(tfrecord_train_files, BATCH_SIZE, NUM_EPOCHS)
@@ -81,12 +80,10 @@ if __name__ == "__main__":
     #    --------------------------------------------------------------- Val Data --------------------------------------------
     tfrecord_val_files = gfile.Glob(os.path.join(src_path, "*_val.tfrecords"))
     num_files_val = len(tfrecord_val_files)
-    # print("Num Records Found: {0}".format(num_files))
     decoder_val = TfRecordDecoder(FRAME_COUNT_PER_EXAMPLE)
     # dataset_val = decoder_val._make_batch_iterator_keras(tfrecord_val_files, BATCH_SIZE, 1)
     # print(dataset_val)
     # ----------------------------------------------------------------------------------------------------------------------------
-    # sess.run(data_initializer_op)
 
 
     train_inpf = functools.partial(decoder_train._make_batch_iterator_keras, tfrecord_train_files, BATCH_SIZE, NUM_EPOCHS)

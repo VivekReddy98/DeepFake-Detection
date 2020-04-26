@@ -7,30 +7,6 @@ from tensorflow.keras.applications import InceptionV3
 from tensorflow.keras.backend import categorical_crossentropy
 
 
-def cross_entropy_loss(y_true, y_pred):
-    return tf.reduce_mean(categorical_crossentropy(y_true, y_pred))
-
-def recall_m(y_true, y_pred):
-    true_positives = K.sum(K.round(K.clip(y_true * y_pred, 0, 1)))
-    possible_positives = K.sum(K.round(K.clip(y_true, 0, 1)))
-    recall = true_positives / (possible_positives + K.epsilon())
-    return recall
-
-def precision_m(y_true, y_pred):
-    true_positives = K.sum(K.round(K.clip(y_true * y_pred, 0, 1)))
-    predicted_positives = K.sum(K.round(K.clip(y_pred, 0, 1)))
-    precision = true_positives / (predicted_positives + K.epsilon())
-    return precision
-
-def f1_m(y_true, y_pred):
-    precision = precision_m(y_true, y_pred)
-    recall = recall_m(y_true, y_pred)
-    return 2*((precision*recall)/(precision+recall+K.epsilon()))
-
-def acc(y_true, y_pred):
-    (val, op) = tf.metrics.accuracy(y_true, y_pred)
-    return op
-
 
 class DeepFakeDetector:
     def __init__(self, frames):
@@ -135,11 +111,14 @@ class DeefFakeDetectorTF:
 
         return preds
 
-    def build(self, input=None):
+    def build(self, input=None, tensor_node_given=False, name="INPUT_TENSOR"):
         '''
         Run this under a session
         '''
-        input_val = Input(shape=(80, 2048), tensor=input)
+        if tensor_node_given:
+            input_val = Input(shape=(80, 2048), tensor=input)
+        else:
+            input_val = Input(shape=(80, 2048), name=name)
         x = LSTM(units=512, input_shape=(None, self.FRAMES, None), dropout=0.5)(input_val)
         x = Dense(units=256, activation='relu')(x)
         x = Dropout(rate=0.5)(x)

@@ -37,10 +37,6 @@ class TfRecordDecoder:
         dataset = dataset.map(self.decode_tfrecord)
         dataset = dataset.apply(tf.data.experimental.unbatch())
         dataset = dataset.batch(batch_size)  # Because of TF 1.12, For New Versions, unbatch is a direct method for datset object
-        # dataset = dataset.repeat(num_epochs)
-        # dataset = dataset.apply(tf.data.experimental.prefetch_to_device())
-        # dataset = dataset.shuffle(len(tfrecord_files)*3+2)
-        # dataset = tf.data.Dataset.zip((dataset))
         dataset = dataset.prefetch(5)
         return dataset #.make_one_shot_iterator()
 
@@ -48,16 +44,12 @@ class TfRecordDecoder:
     def _make_batch_iterator_keras(self, tfrecord_files, batch_size, num_epochs, buffer_size):
         random.shuffle(tfrecord_files)
         dataset = tf.data.TFRecordDataset(tfrecord_files, compression_type="GZIP")
-        dataset = dataset.shuffle(buffer_size=buffer_size)
-        # dataset = dataset.apply(tf.data.experimental.shuffle_and_repeat(buffer_size=buffer_size, count=num_epochs))
+        # dataset = dataset.shuffle(buffer_size=buffer_size)
+        dataset = dataset.apply(tf.data.experimental.shuffle_and_repeat(buffer_size=buffer_size, count=num_epochs+1))
         dataset = dataset.map(self.decode_tfrecord, 4)
         dataset = dataset.apply(tf.data.experimental.unbatch())
         dataset = dataset.batch(batch_size)  # Because of TF 1.12, For New Versions, unbatch is a direct method for datset object
-        # dataset = dataset.repeat(num_epochs)
-        # dataset = dataset.apply(tf.data.experimental.prefetch_to_device())
-        # dataset = dataset.shuffle(len(tfrecord_files)*3+2)
-        # dataset = tf.data.Dataset.zip((dataset))
-        dataset = dataset.prefetch(10)
+        dataset = dataset.prefetch(5)
         return dataset #.make_one_shot_iterator()
 
     def decode_tfrecord(self, serialized_example):
