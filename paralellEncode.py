@@ -42,8 +42,8 @@ if __name__ == "__main__":
     # loop_list = [str(i) for i in range(7,16)]
     # print(loop_list)
 
-    # loop_list = ['7', '8', '9', '10', '11', '12', '13', '15', '24', '25', '26']
-    loop_list = ['14']
+    loop_list = ['48', '49'] #'48', '49'] #, '46', '47', '48']
+    # loop_list = ['14']
 
     for video in loop_list:
         src_path = src_root_path + video
@@ -58,15 +58,17 @@ if __name__ == "__main__":
 
         V2TF = Video2TFRecord(src_path, dest_path, data, "weights/InceptionV3_Non_Trainable.h5")
 
-        (train_split, val_split, test_split) = getSplits(myfiles, splits=(50,25,25))
+        (train_split, val_split, test_split) = getSplits(myfiles, splits=(70,15,15))
 
         assert len(myfiles) == len(train_split) + len(val_split) + len(test_split)
+
+        V2TF.convert_videos_to_tfrecordv2(train_split, split='train')
 
         try:
             V2TF.convert_videos_to_tfrecordv2(train_split, split='train')
             V2TF.convert_videos_to_tfrecordv2(val_split, split='val')
             V2TF.convert_videos_to_tfrecordv2(test_split, split='test')
             time.sleep(5)
-        except:
+        except Exception as e:
             time.sleep(5)
-            print("Error in Conversion video set : " + src_path)
+            print(str(e) + "Error in Conversion video set : " + src_path)

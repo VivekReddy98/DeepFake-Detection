@@ -116,8 +116,6 @@ class DeepFakeDetector:
 
 
 
-
-
 '''
 TF Compatible Model Defintion
 '''
@@ -137,7 +135,7 @@ class DeefFakeDetectorTF:
 
         return preds
 
-    def build(self, input):
+    def build(self, input=None):
         '''
         Run this under a session
         '''

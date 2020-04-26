@@ -27,6 +27,7 @@ mutex = Lock()
 class TfRecordDecoder:
     def __init__(self, NUMFRAMES):
         self.NUMFRAMES = NUMFRAMES
+        self.vector_size = 2048
 
     # Can Feed this Iterator to Training
     # https://github.com/tensorflow/tensorflow/issues/30646
@@ -44,11 +45,12 @@ class TfRecordDecoder:
         return dataset #.make_one_shot_iterator()
 
     # https://github.com/tensorflow/tensorflow/issues/30646
-    def _make_batch_iterator_keras(self, tfrecord_files, batch_size, num_epochs):
+    def _make_batch_iterator_keras(self, tfrecord_files, batch_size, num_epochs, buffer_size):
         random.shuffle(tfrecord_files)
         dataset = tf.data.TFRecordDataset(tfrecord_files, compression_type="GZIP")
-        dataset = dataset.apply(tf.data.experimental.shuffle_and_repeat(buffer_size=2048, count=num_epochs))
-        dataset = dataset.map(self.decode_tfrecord)
+        dataset = dataset.shuffle(buffer_size=buffer_size)
+        # dataset = dataset.apply(tf.data.experimental.shuffle_and_repeat(buffer_size=buffer_size, count=num_epochs))
+        dataset = dataset.map(self.decode_tfrecord, 4)
         dataset = dataset.apply(tf.data.experimental.unbatch())
         dataset = dataset.batch(batch_size)  # Because of TF 1.12, For New Versions, unbatch is a direct method for datset object
         # dataset = dataset.repeat(num_epochs)
@@ -74,7 +76,7 @@ class TfRecordDecoder:
         batch_dim = tf.cast(parsed_data['batch_size'], tf.int32)
 
         # print(tf.shape(annotation), tf.shape(image))
-        image = tf.reshape(image, [batch_dim/self.NUMFRAMES, self.NUMFRAMES, vector_dimensions])
+        image = tf.reshape(image, [batch_dim/self.NUMFRAMES, self.NUMFRAMES, self.vector_size])
         # print(tf.shape(annotation), tf.shape(image))
 
         annotation = tf.reshape(annotation, (1,2))
@@ -135,7 +137,8 @@ class TFRecordGenerator:
     def __init__(self, source_path, destination_path, inception_path, n_frames_per_training_sample,
                 file_suffix, width, height):
         self.inception_path = inception_path
-        self.N_FRMS_PER_SAMPLE = n_frames_per_training_sample
+        self.N_FRMS_PER_SAMPLE_REAL = n_frames_per_training_sample
+        self.N_FRMS_PER_SAMPLE_FAKE = 80
         self.WIDTH = width
         self.HEIGHT = height
         self.SRC_PATH = source_path
@@ -145,11 +148,11 @@ class TFRecordGenerator:
 
     def save_video_as_tf_records_ylabels(self, file, label, split):
 
-        orig = 0
-
-        tfrecords_filename = os.path.join(self.OUT_PATH, file.split('.')[0] + "_" + split + '.tfrecords')
+        tfrecords_filename = os.path.join(self.OUT_PATH, file.split('.')[0] + "_" + label + "_" + split + '.tfrecords')
 
         # print(tfrecords_filename)
+
+        # return 0
 
         check_filename = os.path.join(self.OUT_PATH, file.split('.')[0])
         file_exists = glob.glob(check_filename+"_*.tfrecords")
@@ -170,16 +173,20 @@ class TFRecordGenerator:
             frameWidth = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             frameHeight = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-            buf = np.empty((self.N_FRMS_PER_SAMPLE, self.WIDTH, self.HEIGHT, 3), np.dtype('float32'))
+            if label == "FAKE":
+                N_FRMS_PER_SAMPLE = self.N_FRMS_PER_SAMPLE_FAKE
+            else:
+                N_FRMS_PER_SAMPLE = self.N_FRMS_PER_SAMPLE_REAL
 
-            if (frameCount < 240):
+            buf = np.empty((N_FRMS_PER_SAMPLE, self.WIDTH, self.HEIGHT, 3), np.dtype('float32'))
+
+            if (frameCount < N_FRMS_PER_SAMPLE):
                 print("Framecount too less to extract for file: " + tfrecords_filename + " frameCount: " + frameCount)
-                orig = self.N_FRMS_PER_SAMPLE
-                self.N_FRMS_PER_SAMPLE = frameCount - frameCount%80
+                return 0
 
             fc = 0
 
-            while (fc < self.N_FRMS_PER_SAMPLE):
+            while (fc < N_FRMS_PER_SAMPLE):
                 ret, frame = cap.read()
                 frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 frame = self.central_crop(frame, 0.875)
@@ -194,6 +201,7 @@ class TFRecordGenerator:
             predictions = self.CNN_VECTORIZER.predict(buf)
             # finally:
             #     mutex.release()
+            # return 0
 
             predictions = predictions.astype('float32')
 
@@ -225,10 +233,8 @@ class TFRecordGenerator:
             sys.stdout.flush()
 
         except Exception as e:
-            self.N_FRMS_PER_SAMPLE = orig
-            print(e + "for file: " + tfrecords_filename)
+            print(str(e) + "for file: " + tfrecords_filename)
 
-        self.N_FRMS_PER_SAMPLE = orig
         return 1
 
 

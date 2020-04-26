@@ -2,6 +2,7 @@ from src.architecture import DeepFakeDetector, DeefFakeDetectorTF, cross_entropy
 from src.video2tfrecordCustom import TfRecordDecoder, Video2TFRecord
 import json, math, os
 from tensorflow.python.platform import gfile
+
 # import horovod.tensorflow.keras as hvd
 import tensorflow as tf
 from tensorflow.keras import backend as K
