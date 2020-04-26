@@ -5,7 +5,7 @@ from src.video2tfrecordCustom import TfRecordDecoder
 import json, math, os, sys, time, math, glob
 from tensorflow.python.platform import gfile
 import tensorflow as tf
-from trainingUtils import EvaluateCallback, getDatasetStatistics, TP_m, FP_m, FN_m
+from trainingUtils import EvaluateCallback, getDatasetStatistics, TP_m, FP_m, FN_m, TN_m
 from tensorflow.keras import backend as K
 import numpy as np
 # import horovod.tensorflow.keras as hvd
@@ -28,15 +28,15 @@ if __name__ == "__main__":
     K.set_session(sess)
 
     FRAME_COUNT_PER_EXAMPLE = 80
-    BATCH_SIZE_TRAIN = 128
+    BATCH_SIZE_TRAIN = 64
     BATCH_SIZE_VAL = 512
-    NUM_EPOCHS = 2
+    NUM_EPOCHS = 10
 
 
     #                                                            Get the dataset object from tfrecords object
     #    --------------------------------------------------------------- Train Data --------------------------------------------
     tfrecord_train_files = gfile.Glob(os.path.join(src_path, "*_val.tfrecords"))
-    steps_per_epoch_train = getDatasetStatistics(tfrecord_train_files, FRAME_COUNT_PER_EXAMPLE, BATCH_SIZE_TRAIN, 'train')
+    steps_per_epoch_train, class_weights = getDatasetStatistics(tfrecord_train_files, FRAME_COUNT_PER_EXAMPLE, BATCH_SIZE_TRAIN, 'train')
     decoder_train = TfRecordDecoder(FRAME_COUNT_PER_EXAMPLE)
     train_iterator = tf.data.Iterator.from_structure((tf.float32, tf.int8), (tf.TensorShape([None, FRAME_COUNT_PER_EXAMPLE, 2048]), tf.TensorShape([None, 2])))
     dataset_train = decoder_train._make_batch_iterator_keras(tfrecord_train_files, BATCH_SIZE_TRAIN, NUM_EPOCHS, 512)
@@ -49,7 +49,7 @@ if __name__ == "__main__":
 
     #    --------------------------------------------------------------- Val Data --------------------------------------------
     tfrecord_val_files = gfile.Glob(os.path.join(src_path, "*_test.tfrecords"))
-    steps_per_epoch_validation = getDatasetStatistics(tfrecord_val_files, FRAME_COUNT_PER_EXAMPLE, BATCH_SIZE_VAL, 'validation')
+    steps_per_epoch_validation, clas_weights_val = getDatasetStatistics(tfrecord_val_files, FRAME_COUNT_PER_EXAMPLE, BATCH_SIZE_VAL, 'validation')
     decoder_val = TfRecordDecoder(FRAME_COUNT_PER_EXAMPLE)
     val_iterator = tf.data.Iterator.from_structure((tf.float32, tf.int8), (tf.TensorShape([None, FRAME_COUNT_PER_EXAMPLE, 2048]), tf.TensorShape([None, 2])))
     dataset_val = decoder_val._make_batch_iterator_keras(tfrecord_val_files, BATCH_SIZE_VAL, NUM_EPOCHS, 512)
@@ -68,7 +68,7 @@ if __name__ == "__main__":
     model = DF.build(name="INP_PLACEHOLDER")
     print(model.summary())
     opt = tf.keras.optimizers.Adam(lr=1e-05)
-    met = ['acc', TP_m, FP_m, FN_m] #, recall, f1]
+    met = ['acc'] #, recall, f1] TP_m, FP_m, FN_m, TN_m
     model.compile(optimizer=opt, loss='categorical_crossentropy', metrics = met, target_tensors=[labels_train])
 
     # Train the Model
@@ -81,17 +81,12 @@ if __name__ == "__main__":
     #chkpoint = tf.keras.callbacks.ModelCheckpoint(filepath, monitor='acc', save_weights_only=True)
 
     json_log = open(os.path.join(OUTPUT_PATH,'loss_log_{0}_{1}.json'.format(FRAME_COUNT_PER_EXAMPLE, BATCH_SIZE_TRAIN)), mode='wt', buffering=1)
-    EvaluateCallBack = EvaluateCallback(json_log, input_val, labels_val, steps_per_epoch_validation,
-                               OUTPUT_PATH, FRAME_COUNT_PER_EXAMPLE, BATCH_SIZE_VAL, sess)
+    EvaluateCB = EvaluateCallback(json_log, input_val, labels_val, steps_per_epoch_validation,
+                                  OUTPUT_PATH, FRAME_COUNT_PER_EXAMPLE, BATCH_SIZE_VAL, sess)
 
     try:
         history = model.fit(x = {"INP_PLACEHOLDER" : input_train}, steps_per_epoch=steps_per_epoch_train, epochs=NUM_EPOCHS, verbose=1,
-                            callbacks=[EvaluateCallBack], class_weight={0.25, 0.75})
-    finally:
-        if not(json_log.closed):
-            json_log.write("]")
-            json_log.close()
-
-    # except Exception as e:
-    #     print(e)
-    #     time.sleep(5)
+                            callbacks=[EvaluateCB], class_weight=class_weights)
+    except Exception as e:
+        print(e)
+        time.sleep(5)
