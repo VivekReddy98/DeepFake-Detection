@@ -35,40 +35,42 @@ if __name__ == "__main__":
     	print("Usage:", sys.argv[0], "src_path dest_path file_suffix")
     	sys.exit()
 
-    src_root_path = "/mnt/beegfs/ppatel27/data/dfdc_train_part_"
     dest_path = sys.argv[1]
     file_suffix = sys.argv[2]
 
-    # loop_list = [str(i) for i in range(7,16)]
-    # print(loop_list)
+    # src_root_path = "/home/vkarri/DeepFake_Detection/data/train"
 
-    loop_list = ['48', '49'] #'48', '49'] #, '46', '47', '48']
-    # loop_list = ['14']
+    # #
+    # # # loop_list = [str(i) for i in range(7,16)]
+    # # # print(loop_list)
+    # #
+    # # loop_list = ['3', '4','5', '6'] #'48', '49'] #, '46', '47', '48']
+    # # # loop_list = ['14']
+    # #
+    # # for video in loop_list:
+    src_path = "/home/vkarri/DeepFake_Detection/data/train"
 
-    for video in loop_list:
-        src_path = src_root_path + video
+    with open(os.path.join(src_path,"metadata.json")) as f:
+        data = json.load(f)
 
-        with open(os.path.join(src_path,"metadata.json")) as f:
-            data = json.load(f)
+    filenames = gfile.Glob(os.path.join(src_path, "*."+ file_suffix))
+    filenames =  [name.split(os.path.sep)[-1] for name in filenames]
 
-        filenames = gfile.Glob(os.path.join(src_path, "*."+ file_suffix))
-        filenames =  [name.split(os.path.sep)[-1] for name in filenames]
+    myfiles = partitionList(filenames, hvd.rank(), hvd.size())
 
-        myfiles = partitionList(filenames, hvd.rank(), hvd.size())
+    V2TF = Video2TFRecord(src_path, dest_path, data, "weights/InceptionV3_Non_Trainable.h5")
 
-        V2TF = Video2TFRecord(src_path, dest_path, data, "weights/InceptionV3_Non_Trainable.h5")
+    # (train_split, val_split, test_split) = getSplits(myfiles, splits=(70,15,15))
+    #
+    # assert len(myfiles) == len(train_split) + len(val_split) + len(test_split)
 
-        (train_split, val_split, test_split) = getSplits(myfiles, splits=(70,15,15))
+    # V2TF.convert_videos_to_tfrecordv2(train_split, split='train')
 
-        assert len(myfiles) == len(train_split) + len(val_split) + len(test_split)
-
-        V2TF.convert_videos_to_tfrecordv2(train_split, split='train')
-
-        try:
-            V2TF.convert_videos_to_tfrecordv2(train_split, split='train')
-            V2TF.convert_videos_to_tfrecordv2(val_split, split='val')
-            V2TF.convert_videos_to_tfrecordv2(test_split, split='test')
-            time.sleep(5)
-        except Exception as e:
-            time.sleep(5)
-            print(str(e) + "Error in Conversion video set : " + src_path)
+    try:
+        V2TF.convert_videos_to_tfrecordv2(myfiles, split='train')
+        # V2TF.convert_videos_to_tfrecordv2(val_split, split='val')
+        # V2TF.convert_videos_to_tfrecordv2(test_split, split='test')
+        time.sleep(5)
+    except Exception as e:
+        time.sleep(5)
+        print(str(e) + "Error in Conversion video set : " + src_path)

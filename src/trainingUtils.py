@@ -47,7 +47,8 @@ class EvaluateCallback(tf.keras.callbacks.Callback):
                 filepath,
                 FRAME_COUNT_PER_EXAMPLE,
                 BATCH_SIZE,
-                sess):
+                sess,
+                optimizer):
 
         super(EvaluateCallback, self).__init__()
         self.epoch = 0
@@ -62,8 +63,8 @@ class EvaluateCallback(tf.keras.callbacks.Callback):
         self.filepath = filepath
         self.NUMFRMS = FRAME_COUNT_PER_EXAMPLE
         self.BTH_SIZE = BATCH_SIZE
-
         self.sess = sess
+        self.optimizer = optimizer
 
     def on_epoch_begin(self, epoch, logs=None):
         self.epoch = epoch
@@ -74,23 +75,6 @@ class EvaluateCallback(tf.keras.callbacks.Callback):
         self.writer.write(',')
 
     def on_batch_end(self, batch, logs={}):
-        # self.f1_dict["TP"] += logs['TP_m']
-        # self.f1_dict["FP"] += logs['FP_m']
-        # self.f1_dict["FN"] += logs['FN_m']
-        # self.f1_dict["TN"] += logs['TN_m']
-
-        # precision = self.f1_dict["TP"] / (self.f1_dict["TP"] + self.f1_dict["FP"])
-        # recall = self.f1_dict["TP"] / (self.f1_dict["TP"] + self.f1_dict["FN"])
-        # f1_F = (2*precision*recall)/(precision+recall)
-        #
-        # precision_r = self.f1_dict["TN"] / (self.f1_dict["TN"] + self.f1_dict["FN"])
-        # recall_r = self.f1_dict["TN"] / (self.f1_dict["TN"] + self.f1_dict["FP"])
-        # f1_R = (2*precision_r*recall_r)/(precision_r+recall_r)
-
-        # print(str(self.f1_dict["TP"].item()), str(self.f1_dict["TP"].item()), str(self.f1_dict["TP"].item()), str(self.f1_dict["TP"].item())) - F1_FAKE: {4:.4f} - F1_REAL: {5:.4f}
-        # , f1_F.item(), f1_R.item() 'f1_fake': str(f1_F), 'f1_real': str(f1_R)
-        # print(" Epoch: {0} - Batch {1} - Accuracy: {2:.4f} - Loss: {3:.4f} ".format(self.epoch, batch, logs['acc'].item(), logs['loss'].item()))
-
         self.writer.write(json.dumps({'epoch': self.epoch, 'batch': batch, 'loss': str(logs['loss'])}))
 
     def on_epoch_end(self, epoch, logs=None):
@@ -126,18 +110,22 @@ class EvaluateCallback(tf.keras.callbacks.Callback):
         precision_R = self.f1_dict_eval["TN"] / (self.f1_dict_eval["TN"] + self.f1_dict_eval["FN"])
         recall_R = self.f1_dict_eval["TN"] / (self.f1_dict_eval["TN"] + self.f1_dict_eval["FP"])
         f1_R = (2*precision_R*recall_R) / (precision_R+recall_R)
+
         accuracy = np.float32(sum(acc_list) / len(acc_list))
         loss = np.float32(sum(loss_list) / len(loss_list))
 
+        Total = self.f1_dict_eval["TP"].item() + self.f1_dict_eval["TN"].item() + self.f1_dict_eval["FP"].item() + self.f1_dict_eval["FN"].item()
         print("\nEpoch " +  str(epoch) + " Validation Metrics: Accuracy: {0:.4f}, Loss: {1:.4f}".format(accuracy.item(), loss.item()))
         print("                     Class FAKE: Precision : {0:.4f}, Recall: {1:.4f}, F1: {2:.4f}".format(precision_F.item(), recall_F.item(), f1_F.item()))
         print("                     Class REAL: Precision : {0:.4f}, Recall: {1:.4f}, F1: {2:.4f}".format(precision_R.item(), recall_R.item(), f1_R.item()))
-
+        print("               TN: {0}, TP: {1}, FP: {2} FN: {3}".format(self.f1_dict_eval["TP"].item()/Total, self.f1_dict_eval["TN"].item()/Total,
+                                                                                        self.f1_dict_eval["FP"].item()/Total, self.f1_dict_eval["FN"].item()/Total))
         if epoch == 0:
-            self.model.save_weights(os.path.join(self.filepath, "model_{0}_{1}_weights.h5".format(self.NUMFRMS, self.BTH_SIZE)))
+            self.model.save_weights(os.path.join(self.filepath, "model_{0}_{1}_{2}_weights.h5".format(self.NUMFRMS, self.BTH_SIZE, self.optimizer)))
         else:
-            if f1_F >= min(self.ds.metrics['f1_FK']) and f1_R >= min(self.ds.metrics['f1_RL']):
-                self.model.save_weights(os.path.join(self.filepath, "model_{0}_{1}_weights.h5".format(self.NUMFRMS, self.BTH_SIZE)))
+            print( max(self.ds.metrics['f1_FK']), max(self.ds.metrics['f1_RL']), f1_F, f1_R)
+            if f1_R >= max(self.ds.metrics['f1_RL']):
+                self.model.save_weights(os.path.join(self.filepath, "model_{0}_{1}_{2}_weights.h5".format(self.NUMFRMS, self.BTH_SIZE), self.optimizer))
             else:
                 print("F1 Score not improved and thus not saving model")
 
@@ -150,7 +138,6 @@ class EvaluateCallback(tf.keras.callbacks.Callback):
         self.ds.metrics['acc'].append(accuracy.item())
         self.ds.metrics['loss'].append(loss.item())
 
-
     def on_train_begin(self, logs):
         self.writer.write("[")
         print(self.ds.metrics)
@@ -158,13 +145,11 @@ class EvaluateCallback(tf.keras.callbacks.Callback):
     def on_train_end(self, logs):
         self.writer.write("]")
         self.writer.close()
-        with open(os.path.join(self.filepath,"model_{0}_{1}_valhist.json".format(self.NUMFRMS, self.BTH_SIZE)), 'w') as f:
+        with open(os.path.join(self.filepath,"model_{0}_{1}_{2}_valhist.json".format(self.NUMFRMS, self.BTH_SIZE, self.optimizer)), 'w') as f:
             json.dump(self.ds.metrics, f)
 
     def on_train_end_interrupt(self):
-        self.writer.write("]")
-        self.writer.close()
-        with open(os.path.join(self.filepath,"model_{0}_{1}_valhist.json".format(self.NUMFRMS, self.BTH_SIZE)), 'w') as f:
+        with open(os.path.join(self.filepath,"model_{0}_{1}_{2}_valhist.json".format(self.NUMFRMS, self.BTH_SIZE, self.optimizer)), 'w') as f:
             json.dump(self.ds.metrics, f)
 
 # Get Datset Statistics
@@ -173,7 +158,8 @@ def getDatasetStatistics(tfrecord_train_files, FRAME_COUNT_PER_EXAMPLE, BATCH_SI
     RecordType = {"Plain": 0, "REAL" : 0, "FAKE": 0}
 
     for file in tfrecord_train_files:
-        list_parts = file.split("_")
+        filename = file.split(os.path.sep)[-1]
+        list_parts = filename.split("_")
         if (len(list_parts) == 2 or list_parts[1] == "REAL"):
             if (list_parts[1] == "REAL"):
                 RecordType["REAL"] += 1
@@ -185,10 +171,10 @@ def getDatasetStatistics(tfrecord_train_files, FRAME_COUNT_PER_EXAMPLE, BATCH_SI
             label = list_parts[-1].split(".")[0]
             Total += int(80/FRAME_COUNT_PER_EXAMPLE)
 
-    print("\n----------------------------Batch Statistics for {0} -------------------------------------".format(split))
-    print("\n Total Examples found for {0} split: {1}".format(split, Total))
-    print("\n Record Frequency => Plain: {0}, REAL Marked: {1}, FAKE Marked: {2}".format(RecordType["Plain"], RecordType["REAL"], RecordType["FAKE"]))
-    print("\n Total Example Found: {0}, Steps Per Epoch: {1}".format(Total, math.floor(Total/BATCH_SIZE)))
+    print("\n----------Batch Statistics for {0} -------------".format(split))
+    print("Frequency of TF Records => REAL Marked: {0}, FAKE Marked: {1}".format(RecordType["REAL"], RecordType["FAKE"]))
+    print("Total Examples Extracted: {0}".format(Total))
+    print("Steps Per Epoch: {0} Batch Size: {1}".format(math.floor(Total/BATCH_SIZE), BATCH_SIZE))
 
     try:
         assert Total == (RecordType["Plain"]+RecordType["REAL"])*int(240/FRAME_COUNT_PER_EXAMPLE) + (RecordType["FAKE"])*int(80/FRAME_COUNT_PER_EXAMPLE)
@@ -197,13 +183,44 @@ def getDatasetStatistics(tfrecord_train_files, FRAME_COUNT_PER_EXAMPLE, BATCH_SI
 
     # weights = {(RecordType["FAKE"])*int(80/FRAME_COUNT_PER_EXAMPLE)/Total, (RecordType["Plain"]+RecordType["REAL"])*int(240/FRAME_COUNT_PER_EXAMPLE)/Total}
 
-    weights = {0.20, 0.80}
+    weights = {0.40, 0.60}
 
-    print(weights)
+    # print(weights)
 
     return math.floor(Total/BATCH_SIZE), weights
 
+# Get Datset Statistics
+def getDatasetStatisticsTest(tfrecord_train_files, FRAME_COUNT_PER_EXAMPLE, BATCH_SIZE, split):
+    Total = 0
+    RecordType = {"Plain": 0, "REAL" : 0, "FAKE": 0}
 
+    for file in tfrecord_train_files:
+        filename = file.split(os.path.sep)[-1]
+        list_parts = filename.split("_")
+        if (list_parts[1] == "REAL"):
+            RecordType["REAL"] += 1
+            Total += int(240/FRAME_COUNT_PER_EXAMPLE)
+        else:
+            RecordType["FAKE"] += 1
+            Total += int(240/FRAME_COUNT_PER_EXAMPLE)
+
+    print("\n----------Batch Statistics for {0} -------------".format(split))
+    print("Frequency of TF Records => REAL Marked: {0}, FAKE Marked: {1}".format(RecordType["REAL"], RecordType["FAKE"]))
+    print("Total Examples Extracted: {0}".format(Total))
+    print("Steps Per Epoch: {0} Batch Size: {1}".format(math.floor(Total/BATCH_SIZE), BATCH_SIZE))
+
+    try:
+        assert Total == (RecordType["Plain"]+RecordType["REAL"])*int(240/FRAME_COUNT_PER_EXAMPLE) + (RecordType["FAKE"])*int(240/FRAME_COUNT_PER_EXAMPLE)
+    except AssertionError as msg:
+        print("Total didn't match: your FRAME_COUNT_PER_EXAMPLE should divide 240 & 80 or function implemetation is wrong")
+
+    # weights = {(RecordType["FAKE"])*int(80/FRAME_COUNT_PER_EXAMPLE)/Total, (RecordType["Plain"]+RecordType["REAL"])*int(240/FRAME_COUNT_PER_EXAMPLE)/Total}
+
+    weights = {0.40, 0.60}
+
+    # print(weights)
+
+    return math.ceil(Total/BATCH_SIZE), weights
 
 # Metrics and Loss Function
 def TP_m(y_true, y_pred):

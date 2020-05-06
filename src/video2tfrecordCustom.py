@@ -104,24 +104,6 @@ class Video2TFRecord:
         count = 0
         for file in filenames:
             self.MP.save_video_as_tf_records_ylabels(file,self.df[file]["label"],split)
-            # files_process.append(file)
-            # labels_process.append(self.df[file]["label"])
-            # split_process.append(split)
-            # args_process.append((file,,split))
-
-        # with concurrent.futures.ThreadPoolExecutor(max_workers = 8) as executor:
-        #     results = executor.map(self.MP.save_video_as_tf_records_ylabels, files_process, labels_process, split_process)
-
-        # concurrent.futures.wait(results, timeout=None, return_when=ALL_COMPLETED)
-            # for result in results:
-            #     print(result)
-            # self.MP.save_video_as_tf_records_ylabels(file,self.df[file]["label"],split)
-            # count += 1
-            # if (count > 50):
-            #     break
-        # num_cores = multiprocessing.cpu_count()
-        # p = multiprocessing.Pool(num_cores)
-        # p.starmap(self.MP.save_video_as_tf_records_ylabels, args_process)
         return 1;
 
 
@@ -130,7 +112,7 @@ class TFRecordGenerator:
                 file_suffix, width, height):
         self.inception_path = inception_path
         self.N_FRMS_PER_SAMPLE_REAL = n_frames_per_training_sample
-        self.N_FRMS_PER_SAMPLE_FAKE = 80
+        self.N_FRMS_PER_SAMPLE_FAKE = n_frames_per_training_sample
         self.WIDTH = width
         self.HEIGHT = height
         self.SRC_PATH = source_path
@@ -142,14 +124,8 @@ class TFRecordGenerator:
 
         tfrecords_filename = os.path.join(self.OUT_PATH, file.split('.')[0] + "_" + label + "_" + split + '.tfrecords')
 
-        # print(tfrecords_filename)
-
-        # return 0
-
         check_filename = os.path.join(self.OUT_PATH, file.split('.')[0])
         file_exists = glob.glob(check_filename+"_*.tfrecords")
-
-        # print(file_exists)
 
         if file_exists:
             print("{0} file aready exists".format(tfrecords_filename))
@@ -177,6 +153,8 @@ class TFRecordGenerator:
                 return 0
 
             fc = 0
+
+            print(tfrecords_filename, N_FRMS_PER_SAMPLE)
 
             while (fc < N_FRMS_PER_SAMPLE):
                 ret, frame = cap.read()
@@ -313,16 +291,16 @@ if __name__ == "__main__":
     '''
 
     #'''                                              Create TFRecords
-    with open('../data/metadata.json') as f:
+    with open('../data/train/metadata.json') as f:
         data = json.load(f)
 
-    V2TF = Video2TFRecord("../data/train", "../data/records/", data, "../weights/InceptionV3_Non_Trainable.h5")
+    V2TF = Video2TFRecord("../data/train", "/mnt/beegfs/vkarri/tfrecords_test", data, "../weights/InceptionV3_Non_Trainable.h5")
 
     filenames = gfile.Glob(os.path.join("../data/train", "*.mp4"))
 
     filenames =  [name.split(os.path.sep)[-1] for name in filenames]
 
-    V2TF.convert_videos_to_tfrecordv2(filenames)
+    V2TF.convert_videos_to_tfrecordv2(filenames, 'test')
 
 
     '''                                              Decode Records

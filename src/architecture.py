@@ -116,10 +116,25 @@ class DeefFakeDetectorTF:
         Run this under a session
         '''
         if tensor_node_given:
-            input_val = Input(shape=(80, 2048), tensor=input)
+            input_val = Input(shape=(self.FRAMES, 2048), tensor=input)
         else:
-            input_val = Input(shape=(80, 2048), name=name)
-        x = LSTM(units=512, input_shape=(None, self.FRAMES, None), dropout=0.5)(input_val)
+            input_val = Input(shape=(self.FRAMES, 2048), name=name)
+        x = LSTM(units=512, input_shape=(None, self.FRAMES, 2048), dropout=0.5)(input_val)
+        x = Dense(units=256, activation='relu')(x)
+        x = Dropout(rate=0.5)(x)
+        preds = Dense(2, activation='softmax')(x)
+        model = Model(inputs=input_val, outputs=preds)
+        return model
+
+    def buildnew(self, input=None, tensor_node_given=False, name="INPUT_TENSOR"):
+        '''
+        Run this under a session
+        '''
+        if tensor_node_given:
+            input_val = Input(shape=(self.FRAMES, 2048), tensor=input)
+        else:
+            input_val = Input(shape=(self.FRAMES, 2048), name=name)
+        x = LSTM(units=512, input_shape=(None, self.FRAMES, 2048), dropout=0.5)(input_val)
         x = Dense(units=256, activation='relu')(x)
         x = Dropout(rate=0.5)(x)
         preds = Dense(2, activation='softmax')(x)
